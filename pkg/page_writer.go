@@ -14,7 +14,7 @@ type PageWriter struct {
 	page   []byte
 }
 
-func NewPageWriter(writer io.Writer, pageSize int) *PageWriter {
+func NewPageWriter(writer io.Writer, pageSize int64) *PageWriter {
 	return &PageWriter{
 		writer: writer,
 		offset: 0,
@@ -22,7 +22,7 @@ func NewPageWriter(writer io.Writer, pageSize int) *PageWriter {
 	}
 }
 
-// TODO: restore file on flush fail
+// TODO: restore readWriteFile on flush fail
 
 func (wr *PageWriter) Flush() error {
 	var pageSize = len(wr.page)

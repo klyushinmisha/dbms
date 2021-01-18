@@ -9,8 +9,7 @@ import (
 func TestAdd(t *testing.T) {
 	tree := CreateBPlusTree()
 
-
-	for i := 0 ; i < 16; i++ {
+	for i := 0; i < 16; i++ {
 		key := strconv.Itoa(i)
 		tree.Add(key, int64(i))
 	}

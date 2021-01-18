@@ -14,7 +14,7 @@ type PageReader struct {
 	page   []byte
 }
 
-func NewPageReader(reader io.Reader, pageSize int) *PageReader {
+func NewPageReader(reader io.Reader, pageSize int64) *PageReader {
 	return &PageReader{
 		reader: reader,
 		offset: 0,

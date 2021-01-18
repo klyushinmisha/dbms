@@ -40,15 +40,15 @@ func TestPageWriter(t *testing.T) {
 	}()
 
 	pageSize := 16
-	writer := NewPageWriter(out, pageSize)
+	writer := NewPageWriter(out, int64(pageSize))
 	defer func() {
 		flushErr := writer.Flush()
 		if flushErr != nil {
 			log.Fatalln(flushErr)
 		}
 	}()
-	fillWithBytes(writer, 2, pageSize - 1)
-	fillWithBytes(writer, 1, pageSize - 2)
+	fillWithBytes(writer, 2, pageSize-1)
+	fillWithBytes(writer, 1, pageSize-2)
 	fillWithBytes(writer, 0xFF, 3)
 }
 
@@ -75,7 +75,7 @@ func TestPageReader(t *testing.T) {
 	}()
 
 	pageSize := 16
-	writer := NewPageWriter(out, pageSize)
+	writer := NewPageWriter(out, int64(pageSize))
 	dataToWrite := [][2]int{
 		{2, pageSize - 1},
 		{1, pageSize - 2},
@@ -100,7 +100,7 @@ func TestPageReader(t *testing.T) {
 		}
 	}()
 
-	reader := NewPageReader(in, pageSize)
+	reader := NewPageReader(in, int64(pageSize))
 	for _, pair := range dataToWrite {
 		bytesToReadCnt := pair[1]
 		readData := make([]byte, bytesToReadCnt, bytesToReadCnt)
