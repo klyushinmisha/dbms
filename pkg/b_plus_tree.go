@@ -149,8 +149,6 @@ func (tree BPlusTree) writeNodeToFile(pNode *node, addr AddrType) {
 
 func (tree BPlusTree) DFS(pos AddrType, level int) {
 	pCurNode := tree.readNodeFromFile(pos)
-	// log.Printf("%d %v", pos, pCurNode)
-	// log.Printf("%d %d %v %v", level, pos, pCurNode.Keys[:pCurNode.KeyNum], pCurNode.Children[:pCurNode.KeyNum+1])
 	if pCurNode.Leaf {
 		return
 	}
@@ -337,26 +335,7 @@ func (tree BPlusTree) Init() {
 }
 
 func (tree BPlusTree) updateKeys(nodeAddr AddrType) {
-	pCurNode := tree.readNodeFromFile(nodeAddr)
-	for {
-		if !pCurNode.Leaf {
-			var i int32 = 0
-			for ; i < pCurNode.KeyNum; i++ {
-				pChild := tree.readNodeFromFile(pCurNode.Children[i])
-				pChild.Parent = nodeAddr
-				tree.writeNodeToFile(pChild, pCurNode.Children[i])
-				if i > 0 {
-					pCurNode.Keys[i-1] = pChild.Keys[0]
-				}
-			}
-			tree.writeNodeToFile(pCurNode, nodeAddr)
-		}
-		if pCurNode.Parent == -1 {
-			return
-		}
-		nodeAddr = pCurNode.Parent
-		pCurNode = tree.readNodeFromFile(nodeAddr)
-	}
+	//
 }
 
 func (tree BPlusTree) Delete(key string) error {
@@ -462,6 +441,13 @@ func (tree BPlusTree) Delete(key string) error {
 					copy(pLeftNode.Keys[pLeftNode.KeyNum:], pCurNode.Keys[:])
 					copy(pLeftNode.Pointers[pLeftNode.KeyNum:], pCurNode.Pointers[:])
 					copy(pLeftNode.Children[pLeftNode.KeyNum:], pCurNode.Children[:])
+					pLeftNode.KeyNum += pCurNode.KeyNum
+					var i int32
+					for ; i < pCurNode.KeyNum; i++ {
+						pChild := tree.readNodeFromFile(pCurNode.Children[i])
+						pChild.Parent = nodeAddr
+						tree.writeNodeToFile(pChild, pCurNode.Children[i])
+					}
 					// update keys on the way to the root
 					pLeftNode.Right = pCurNode.Right
 					tree.writeNodeToFile(pLeftNode, pCurNode.Left)
@@ -480,6 +466,13 @@ func (tree BPlusTree) Delete(key string) error {
 					copy(pCurNode.Keys[pCurNode.KeyNum:], pRightNode.Keys[:])
 					copy(pCurNode.Pointers[pCurNode.KeyNum:], pRightNode.Pointers[:])
 					copy(pCurNode.Children[pCurNode.KeyNum:], pRightNode.Children[:])
+					pCurNode.KeyNum += pRightNode.KeyNum
+					var i int32
+					for ; i < pRightNode.KeyNum; i++ {
+						pChild := tree.readNodeFromFile(pRightNode.Children[i])
+						pChild.Parent = nodeAddr
+						tree.writeNodeToFile(pChild, pRightNode.Children[i])
+					}
 					// update keys on the way to the root
 					var pRightRightNode *node
 					if pRightNode.Right != -1 {
