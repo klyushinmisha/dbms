@@ -334,8 +334,25 @@ func (tree BPlusTree) Init() {
 	}
 }
 
-func (tree BPlusTree) updateKeys(nodeAddr AddrType) {
-	//
+func (tree BPlusTree) updateKeys(nodeAddr AddrType, deletedKey KeyType, replaceKey KeyType) {
+	// optimise redundant calls
+	pCurNode := tree.readNodeFromFile(nodeAddr)
+	for {
+		nodeAddr := pCurNode.Parent
+		if nodeAddr == -1 {
+			break
+		}
+		pCurNode = tree.readNodeFromFile(nodeAddr)
+		var i int32
+		for ; i < pCurNode.KeyNum; i++ {
+			if memcmp(pCurNode.Keys[i], deletedKey) == 0 {
+				pCurNode.Keys[i] = replaceKey
+				break
+			}
+		}
+		tree.writeNodeToFile(pCurNode, nodeAddr)
+		// maybe return here
+	}
 }
 
 func (tree BPlusTree) Delete(key string) error {
@@ -383,6 +400,7 @@ func (tree BPlusTree) Delete(key string) error {
 		copy(pCurNode.Keys[pos:], pCurNode.Keys[pos+1:])
 		copy(pCurNode.Pointers[pos:], pCurNode.Pointers[pos+1:])
 		copy(pCurNode.Children[pos+1:], pCurNode.Children[pos+2:])
+		replaceKey := pCurNode.Keys[pos]
 		pCurNode.KeyNum--
 		mustContinue := false
 		if pCurNode.KeyNum < t-1 {
@@ -413,7 +431,7 @@ func (tree BPlusTree) Delete(key string) error {
 				}
 				tree.writeNodeToFile(pCurNode, nodeAddr)
 				// update keys on the way to the root
-				tree.updateKeys(nodeAddr)
+				tree.updateKeys(nodeAddr, bytesKey, pCurNode.Keys[0])
 			} else if pRightNode != nil && pRightNode.KeyNum > t-1 {
 				log.Println("1.2")
 				pCurNode.KeyNum++
@@ -432,7 +450,8 @@ func (tree BPlusTree) Delete(key string) error {
 				tree.writeNodeToFile(pRightNode, pCurNode.Right)
 				tree.writeNodeToFile(pCurNode, nodeAddr)
 				// update keys on the way to the root
-				tree.updateKeys(nodeAddr)
+				// тут проблема с тем, что нужно обновить родительский узел информацией из родителя
+				tree.updateKeys(nodeAddr, bytesKey, pRightNode.Keys[0])
 			} else {
 				log.Println("1.3")
 				if pLeftNode != nil {
@@ -457,7 +476,7 @@ func (tree BPlusTree) Delete(key string) error {
 					}
 					bytesKey = pCurNode.Keys[0]
 					tree.writeNodeToFile(pCurNode, nodeAddr)
-					tree.updateKeys(pCurNode.Left)
+					tree.updateKeys(pCurNode.Left, bytesKey, replaceKey)
 					pCurNode = tree.readNodeFromFile(pLeftNode.Parent)
 					mustContinue = true
 				} else if pRightNode != nil {
@@ -484,7 +503,7 @@ func (tree BPlusTree) Delete(key string) error {
 					}
 					pCurNode.Right = pRightNode.Right
 					tree.writeNodeToFile(pCurNode, nodeAddr)
-					tree.updateKeys(nodeAddr)
+					tree.updateKeys(nodeAddr, bytesKey, replaceKey)
 					bytesKey = pRightNode.Keys[0]
 					nodeAddr = pCurNode.Parent
 					pCurNode = tree.readNodeFromFile(nodeAddr)
@@ -492,11 +511,13 @@ func (tree BPlusTree) Delete(key string) error {
 				} else {
 					log.Println("1.3.3")
 					tree.writeNodeToFile(pCurNode, nodeAddr)
+					tree.updateKeys(nodeAddr, bytesKey, replaceKey)
 				}
 			}
 		} else {
 			log.Println("1.3.4")
 			tree.writeNodeToFile(pCurNode, nodeAddr)
+			tree.updateKeys(nodeAddr, bytesKey, replaceKey)
 		}
 		if !mustContinue {
 			break
