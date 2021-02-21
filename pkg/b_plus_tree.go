@@ -451,9 +451,21 @@ func (tree BPlusTree) Delete(key string) error {
 				tree.writeNodeToFile(pCurNode, nodeAddr)
 				// update keys on the way to the root
 				// тут проблема с тем, что нужно обновить родительский узел информацией из родителя
-				tree.updateKeys(nodeAddr, bytesKey, pRightNode.Keys[0])
+				tree.updateKeys(nodeAddr, bytesKey, pCurNode.Keys[0])
+				if pRightNode.Parent != -1 {
+					pParent := tree.readNodeFromFile(pRightNode.Parent)
+					var i int32
+					for ; i < pParent.KeyNum; i++ {
+						if memcmp(pParent.Keys[i], pCurNode.Keys[pCurNode.KeyNum-1]) == 0 {
+							pParent.Keys[i] = pRightNode.Keys[0]
+							break
+						}
+					}
+					tree.writeNodeToFile(pParent, pRightNode.Parent)
+				}
 			} else {
 				log.Println("1.3")
+				// теперь баг в этой ветке
 				if pLeftNode != nil {
 					log.Println("1.3.1")
 					// merge current node with left one
