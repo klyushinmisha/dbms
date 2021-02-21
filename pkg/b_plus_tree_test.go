@@ -1125,7 +1125,7 @@ func TestBPlusTree_Delete(t *testing.T) {
 	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
 		tree := MakeBPlusTree(file)
 		tree.Init()
-		keysToDelete := []string{"C", "N", "G", "E", "X", "V", "D", "R", "Y", "I", "F", "U", "Z", "T", "M", "A", "K", "L", "c", "n", "x", "B", "e", "r", "t", "z"}
+		keysToDelete := []string{"C", "N", "G", "E", "X", "V", "D", "R", "Y", "I", "F", "U", "Z", "T", "M", "A", "K", "L", "c", "n", "x", "B", "e", "r", "t", "z", "v", "b", "m"}
 		for i, k := range keysToDelete {
 			err := tree.Insert(k, AddrType(0xABCD+i))
 			if err != nil {

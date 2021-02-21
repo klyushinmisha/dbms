@@ -338,29 +338,134 @@ func (tree BPlusTree) updateKeys(nodeAddr AddrType, deletedKey KeyType, replaceK
 	// optimise redundant calls
 	pCurNode := tree.readNodeFromFile(nodeAddr)
 	for {
-		nodeAddr := pCurNode.Parent
+		nodeAddr = pCurNode.Parent
 		if nodeAddr == -1 {
 			break
 		}
 		pCurNode = tree.readNodeFromFile(nodeAddr)
-		var i int32
-		for ; i < pCurNode.KeyNum; i++ {
-			if memcmp(pCurNode.Keys[i], deletedKey) == 0 {
-				pCurNode.Keys[i] = replaceKey
-				break
-			}
+		pos := tree.findKeyPos(pCurNode, deletedKey)
+		if pos != -1 {
+			pCurNode.Keys[pos] = replaceKey
 		}
 		tree.writeNodeToFile(pCurNode, nodeAddr)
 		// maybe return here
 	}
 }
 
+/*
+
+DELETE:
+1) find leaf
+2) if nothing in leaf -> ret
+3) delete key from leaf
+4) if keynum >= t - 1 -> write and ret
+5) else:
+5.1) if pLeftNode.KeyNum > t-1 -> move item from left
+5.2) else if pRightNode.KeyNum > t-1 -> move item from right
+5.3) else can merge with one of them
+5.3.1) if left != nil -> merge with left and delete refs from cur's parent
+5.3.2) if right != nil -> merge with right one and delete refs from right's parent
+
+*/
+
+func (tree BPlusTree) shiftKeysLeft(pLeft *node, pRight *node) {
+	pLeft.Keys[pLeft.KeyNum] = pRight.Keys[0]
+	pLeft.Pointers[pLeft.KeyNum] = pRight.Pointers[0]
+	pLeft.Children[pLeft.KeyNum+1] = pRight.Children[0]
+	copy(pRight.Keys[:], pRight.Keys[1:])
+	copy(pRight.Pointers[:], pRight.Pointers[1:])
+	copy(pRight.Children[:], pRight.Children[1:])
+	pLeft.KeyNum++
+	pRight.KeyNum--
+}
+
+func (tree BPlusTree) shiftKeysRight(pLeft *node, pRight *node) {
+	copy(pRight.Keys[1:], pRight.Keys[:])
+	copy(pRight.Pointers[1:], pRight.Pointers[:])
+	copy(pRight.Children[1:], pRight.Pointers[:])
+	pRight.Keys[0] = pLeft.Keys[pLeft.KeyNum-1]
+	pRight.Pointers[0] = pLeft.Pointers[pLeft.KeyNum-1]
+	pRight.Children[0] = pLeft.Children[pLeft.KeyNum]
+	pLeft.KeyNum--
+	pRight.KeyNum++
+}
+
+func (tree BPlusTree) mergeNodes(pDst *node, pSrc *node) {
+	copy(pDst.Keys[pDst.KeyNum:], pSrc.Keys[:])
+	copy(pDst.Pointers[pDst.KeyNum:], pSrc.Pointers[:])
+	copy(pDst.Children[pDst.KeyNum+1:], pSrc.Children[:])
+	pDst.KeyNum += pSrc.KeyNum
+}
+
+func (tree BPlusTree) findKeyPos(pNode *node, key KeyType) int32 {
+	var pos int32 = 0
+	for ; pos < pNode.KeyNum; pos++ {
+		if memcmp(key, pNode.Keys[pos]) == 0 {
+			return pos
+		}
+	}
+	return -1
+}
+
+func (tree BPlusTree) updateChild(pNode *node, nodeAddr AddrType) {
+	pChild := tree.readNodeFromFile(pNode.Children[0])
+	pChild.Parent = nodeAddr
+	tree.writeNodeToFile(pChild, pNode.Children[0])
+}
+
+func (tree BPlusTree) unlinkNode(pNode *node) {
+	if pNode.Left != -1 {
+		pLeft := tree.readNodeFromFile(pNode.Left)
+		pLeft.Right = pNode.Right
+		tree.writeNodeToFile(pLeft, pNode.Left)
+	}
+	if pNode.Right != -1 {
+		pRight := tree.readNodeFromFile(pNode.Right)
+		pRight.Left = pNode.Left
+		tree.writeNodeToFile(pRight, pNode.Right)
+	}
+}
+
+func (tree BPlusTree) rebindParent(pNode *node, newParent AddrType) {
+	var i int32
+	for ; i <= pNode.KeyNum; i++ {
+		pChild := tree.readNodeFromFile(pNode.Children[i])
+		pChild.Parent = newParent
+		tree.writeNodeToFile(pChild, pNode.Children[i])
+	}
+}
+
+func (tree BPlusTree) updatePathToRoot(nodeAddr AddrType) {
+	pNode := tree.readNodeFromFile(nodeAddr)
+	minKey := pNode.Keys[0]
+	for pNode.Parent != -1 {
+		if pNode.Left == -1 {
+			return
+		}
+		pLeftNode := tree.readNodeFromFile(pNode.Left)
+		if pLeftNode.Parent == pNode.Parent {
+			pParent := tree.readNodeFromFile(pNode.Parent)
+			var i int32 = 1
+			for ; i <= pParent.KeyNum; i++ {
+				if pParent.Children[i] == nodeAddr {
+					pParent.Keys[i-1] = minKey
+					tree.writeNodeToFile(pParent, pNode.Parent)
+					break
+				}
+			}
+			// write min key
+			return
+		}
+		nodeAddr = pNode.Parent
+		pNode = tree.readNodeFromFile(nodeAddr)
+	}
+}
+
 func (tree BPlusTree) Delete(key string) error {
 	var bytesKey = toKeyType(key)
-	var pCurNode *node
-	pHeader := tree.readHeaderFromFile()
+	var pHeader = tree.readHeaderFromFile()
 	var nodeAddr = pHeader.Head
-	pCurNode = tree.readNodeFromFile(nodeAddr)
+	var pCurNode = tree.readNodeFromFile(nodeAddr)
 	// find leaf
 	for !pCurNode.Leaf {
 		var i int32
@@ -372,172 +477,91 @@ func (tree BPlusTree) Delete(key string) error {
 			}
 		}
 	}
-	// find item to delete in leaf
-	var pos int32 = 0
-	var deletePos int32 = -1
-	for ; pos < pCurNode.KeyNum; pos++ {
-		if memcmp(bytesKey, pCurNode.Keys[pos]) == 0 {
-			deletePos = pos
-			break
-		}
-	}
-	if deletePos == -1 {
+	pos := tree.findKeyPos(pCurNode, bytesKey)
+	if pos == -1 {
 		return ErrKeyNotFound
 	}
-
-	// recursively delete items
 	for {
-		log.Println(pCurNode.Leaf)
-		deletePos = -1
-		for ; pos < pCurNode.KeyNum; pos++ {
-			if memcmp(bytesKey, pCurNode.Keys[pos]) == 0 {
-				deletePos = pos
-				break
-			}
-		}
-		if deletePos == -1 {
+		log.Println("HERE")
+		pos = tree.findKeyPos(pCurNode, bytesKey)
+		if pos == -1 {
 			return nil
 		}
+		pCurNode.KeyNum--
 		copy(pCurNode.Keys[pos:], pCurNode.Keys[pos+1:])
 		copy(pCurNode.Pointers[pos:], pCurNode.Pointers[pos+1:])
 		copy(pCurNode.Children[pos+1:], pCurNode.Children[pos+2:])
-		replaceKey := pCurNode.Keys[pos]
-		pCurNode.KeyNum--
-		mustContinue := false
-		if pCurNode.KeyNum < t-1 {
-			log.Println("1")
-			var pLeftNode *node
-			var pRightNode *node
-			if pCurNode.Left != -1 {
-				pLeftNode = tree.readNodeFromFile(pCurNode.Left)
-			}
-			if pCurNode.Right != -1 {
-				pRightNode = tree.readNodeFromFile(pCurNode.Right)
-			}
-			if pLeftNode != nil && pLeftNode.KeyNum > t-1 {
-				log.Println("1.1")
-				pCurNode.KeyNum++
-				pLeftNode.KeyNum--
-				tree.writeNodeToFile(pLeftNode, pCurNode.Left)
-				copy(pCurNode.Keys[1:], pCurNode.Keys[:])
-				copy(pCurNode.Pointers[1:], pCurNode.Pointers[:])
-				copy(pCurNode.Children[1:], pCurNode.Children[:])
-				pCurNode.Keys[0] = pLeftNode.Keys[pLeftNode.KeyNum]
-				pCurNode.Pointers[0] = pLeftNode.Pointers[pLeftNode.KeyNum]
-				pCurNode.Children[0] = pLeftNode.Children[pLeftNode.KeyNum+1]
-				if !pCurNode.Leaf {
-					pChild := tree.readNodeFromFile(pCurNode.Children[0])
-					pChild.Parent = nodeAddr
-					tree.writeNodeToFile(pChild, pCurNode.Children[0])
-				}
-				tree.writeNodeToFile(pCurNode, nodeAddr)
-				// update keys on the way to the root
-				tree.updateKeys(nodeAddr, bytesKey, pCurNode.Keys[0])
-			} else if pRightNode != nil && pRightNode.KeyNum > t-1 {
-				log.Println("1.2")
-				pCurNode.KeyNum++
-				pRightNode.KeyNum--
-				pCurNode.Keys[pCurNode.KeyNum-1] = pRightNode.Keys[0]
-				pCurNode.Pointers[pCurNode.KeyNum-1] = pRightNode.Pointers[0]
-				pCurNode.Children[pCurNode.KeyNum] = pRightNode.Children[0]
-				if !pCurNode.Leaf {
-					pChild := tree.readNodeFromFile(pCurNode.Children[pCurNode.KeyNum])
-					pChild.Parent = nodeAddr
-					tree.writeNodeToFile(pChild, pCurNode.Children[pCurNode.KeyNum])
-				}
-				copy(pRightNode.Keys[:], pRightNode.Keys[1:])
-				copy(pRightNode.Pointers[:], pRightNode.Pointers[1:])
-				copy(pRightNode.Children[:], pRightNode.Children[1:])
-				tree.writeNodeToFile(pRightNode, pCurNode.Right)
-				tree.writeNodeToFile(pCurNode, nodeAddr)
-				// update keys on the way to the root
-				// тут проблема с тем, что нужно обновить родительский узел информацией из родителя
-				tree.updateKeys(nodeAddr, bytesKey, pCurNode.Keys[0])
-				if pRightNode.Parent != -1 {
-					pParent := tree.readNodeFromFile(pRightNode.Parent)
-					var i int32
-					for ; i < pParent.KeyNum; i++ {
-						if memcmp(pParent.Keys[i], pCurNode.Keys[pCurNode.KeyNum-1]) == 0 {
-							pParent.Keys[i] = pRightNode.Keys[0]
-							break
-						}
-					}
-					tree.writeNodeToFile(pParent, pRightNode.Parent)
-				}
-			} else {
-				log.Println("1.3")
-				// теперь баг в этой ветке
-				if pLeftNode != nil {
-					log.Println("1.3.1")
-					// merge current node with left one
-					if !pCurNode.Leaf {
-						var i int32
-						for ; i < pCurNode.KeyNum; i++ {
-							pChild := tree.readNodeFromFile(pCurNode.Children[i])
-							pChild.Parent = pCurNode.Left
-							tree.writeNodeToFile(pChild, pCurNode.Children[i])
-						}
-					}
-					copy(pLeftNode.Keys[pLeftNode.KeyNum:], pCurNode.Keys[:])
-					copy(pLeftNode.Pointers[pLeftNode.KeyNum:], pCurNode.Pointers[:])
-					copy(pLeftNode.Children[pLeftNode.KeyNum:], pCurNode.Children[:])
-					pLeftNode.KeyNum += pCurNode.KeyNum
-					// update keys on the way to the root
-					pLeftNode.Right = pCurNode.Right
-					tree.writeNodeToFile(pLeftNode, pCurNode.Left)
-					if pRightNode != nil {
-						pRightNode.Left = pCurNode.Left
-						tree.writeNodeToFile(pRightNode, pCurNode.Right)
-					}
-					bytesKey = pCurNode.Keys[0]
-					// delete pCurNode refs from parent
-					tree.updateKeys(pCurNode.Left, bytesKey, replaceKey)
-					pCurNode = tree.readNodeFromFile(pLeftNode.Parent)
-					mustContinue = true
-				} else if pRightNode != nil {
-					log.Println("1.3.2")
-					// merge current node with right one
-					if !pRightNode.Leaf {
-						var i int32
-						for ; i < pRightNode.KeyNum; i++ {
-							pChild := tree.readNodeFromFile(pRightNode.Children[i])
-							pChild.Parent = nodeAddr
-							tree.writeNodeToFile(pChild, pRightNode.Children[i])
-						}
-					}
-					copy(pCurNode.Keys[pCurNode.KeyNum:], pRightNode.Keys[:])
-					copy(pCurNode.Pointers[pCurNode.KeyNum:], pRightNode.Pointers[:])
-					copy(pCurNode.Children[pCurNode.KeyNum:], pRightNode.Children[:])
-					pCurNode.KeyNum += pRightNode.KeyNum
-					// update keys on the way to the root
-					var pRightRightNode *node
-					if pRightNode.Right != -1 {
-						pRightRightNode = tree.readNodeFromFile(pRightNode.Right)
-					}
-					if pRightRightNode != nil {
-						pRightRightNode.Left = nodeAddr
-						tree.writeNodeToFile(pRightRightNode, pRightNode.Right)
-					}
-					pCurNode.Right = pRightNode.Right
-					tree.writeNodeToFile(pCurNode, nodeAddr)
-					tree.updateKeys(nodeAddr, bytesKey, replaceKey)
-					bytesKey = pRightNode.Keys[0]
-					nodeAddr = pCurNode.Parent
-					pCurNode = tree.readNodeFromFile(nodeAddr)
-					mustContinue = true
-				} else {
-					log.Println("1.3.3")
-					tree.writeNodeToFile(pCurNode, nodeAddr)
-					tree.updateKeys(nodeAddr, bytesKey, replaceKey)
-				}
-			}
-		} else {
-			log.Println("1.3.4")
+		if pCurNode.KeyNum >= t-1 {
+			tree.updateKeys(nodeAddr, bytesKey, pCurNode.Keys[pos])
 			tree.writeNodeToFile(pCurNode, nodeAddr)
-			tree.updateKeys(nodeAddr, bytesKey, replaceKey)
+			return nil
 		}
-		if !mustContinue {
-			break
+		// balance tree
+		var pLeftNode *node
+		var pRightNode *node
+		if pCurNode.Left != -1 {
+			pLeftNode = tree.readNodeFromFile(pCurNode.Left)
+		}
+		if pCurNode.Right != -1 {
+			pRightNode = tree.readNodeFromFile(pCurNode.Right)
+		}
+		if pLeftNode != nil && pLeftNode.KeyNum > t-1 {
+			tree.shiftKeysRight(pLeftNode, pCurNode)
+			if !pCurNode.Leaf {
+				pChild := tree.readNodeFromFile(pCurNode.Children[0])
+				pChild.Parent = nodeAddr
+				tree.writeNodeToFile(pChild, pCurNode.Children[0])
+			}
+			tree.writeNodeToFile(pLeftNode, pCurNode.Left)
+			tree.writeNodeToFile(pCurNode, nodeAddr)
+			tree.updatePathToRoot(nodeAddr)
+			return nil
+		} else if pRightNode != nil && pRightNode.KeyNum > t-1 {
+			tree.shiftKeysLeft(pCurNode, pRightNode)
+			if !pCurNode.Leaf {
+				pChild := tree.readNodeFromFile(pCurNode.Children[pCurNode.KeyNum-1])
+				pChild.Parent = nodeAddr
+				tree.writeNodeToFile(pChild, pCurNode.Children[pCurNode.KeyNum-1])
+			}
+			tree.writeNodeToFile(pRightNode, pCurNode.Right)
+			tree.writeNodeToFile(pCurNode, nodeAddr)
+			tree.updatePathToRoot(nodeAddr)
+			tree.updatePathToRoot(pCurNode.Right)
+			return nil
+		} else {
+			log.Println("MERGE")
+			if pLeftNode != nil {
+				if !pCurNode.Leaf {
+					tree.rebindParent(pCurNode, pCurNode.Left)
+				}
+				tree.mergeNodes(pLeftNode, pCurNode)
+				tree.writeNodeToFile(pLeftNode, pCurNode.Left)
+				tree.unlinkNode(pCurNode)
+				if pLeftNode.Parent == -1 {
+					return nil
+				}
+				nodeAddr = pCurNode.Parent
+				if pCurNode.KeyNum != 0 {
+					bytesKey = pCurNode.Keys[0]
+				}
+				pCurNode = tree.readNodeFromFile(nodeAddr)
+			} else if pRightNode != nil {
+				if !pRightNode.Leaf {
+					tree.rebindParent(pRightNode, nodeAddr)
+				}
+				tree.mergeNodes(pCurNode, pRightNode)
+				tree.writeNodeToFile(pCurNode, nodeAddr)
+				tree.unlinkNode(pRightNode)
+				//tree.updateKeys(pCurNode.Left, bytesKey, pCurNode.Keys[0])
+				if pCurNode.Parent == -1 {
+					return nil
+				}
+				nodeAddr = pCurNode.Parent
+				bytesKey = pRightNode.Keys[0]
+				pCurNode = tree.readNodeFromFile(nodeAddr)
+			} else {
+				panic("WTF!?, maybe root")
+			}
 		}
 	}
 	return nil
