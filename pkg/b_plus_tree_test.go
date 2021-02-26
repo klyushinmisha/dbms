@@ -1125,7 +1125,7 @@ func TestBPlusTree_Delete(t *testing.T) {
 	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
 		tree := MakeBPlusTree(file)
 		tree.Init()
-		keysToDelete := []string{"C", "N", "G", "E", "X", "V", "D", "R", "Y", "I", "F", "U", "Z", "T", "M", "A", "K", "L", "c", "n", "x", "B", "e", "r", "t", "z", "v", "b", "m"}
+		keysToDelete := keys
 		for i, k := range keysToDelete {
 			err := tree.Insert(k, AddrType(0xABCD+i))
 			if err != nil {
@@ -1138,20 +1138,8 @@ func TestBPlusTree_Delete(t *testing.T) {
 				log.Panic(err)
 			}
 		}
-		pHeader := tree.readHeaderFromFile()
-		log.Println()
-		log.Println("####### ENTER ########")
-		tree.DFS(pHeader.Head, 0)
-		log.Println("####### EXIT  ########")
-		log.Println()
 		for i, k := range keysToDelete {
 			err := tree.Delete(k)
-			log.Println()
-			log.Printf("AFTER %d DELETE", []byte(k)[0])
-			log.Println("####### ENTER ########")
-			tree.DFS(pHeader.Head, 0)
-			log.Println("####### EXIT  ########")
-			log.Println()
 			if err != nil {
 				log.Panic(err)
 			}
@@ -1168,6 +1156,23 @@ func TestBPlusTree_Delete(t *testing.T) {
 					log.Panicf("Not found untouched key %s during %s delete", k2, k)
 				}
 			}
+		}
+		return nil
+	})
+	if execErr != nil {
+		log.Panic(execErr)
+	}
+}
+
+func TestBPlusTree_verifyChecksum(t *testing.T) {
+	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
+		tree := MakeBPlusTree(file)
+		tree.Init()
+		pHeader := tree.readHeaderFromFile()
+		pRoot := tree.readNodeFromFile(pHeader.Head)
+		pRoot.updateChecksum()
+		if !pRoot.verifyChecksum() {
+			log.Panic("Checksum is invalid")
 		}
 		return nil
 	})
