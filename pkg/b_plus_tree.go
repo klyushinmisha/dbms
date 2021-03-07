@@ -95,8 +95,7 @@ type node struct {
 	Right    AddrType
 	KeyNum   int32
 	Keys     [2 * t]KeyType
-	Pointers [2 * t]AddrType
-	Children [2*t + 1]AddrType
+	Pointers [2*t + 1]AddrType
 	Checksum uint32
 }
 
@@ -236,7 +235,7 @@ func (tree BPlusTree) findLeafAddr(key KeyType) AddrType {
 	for !pCurNode.Leaf() {
 		for i := int32(0); i <= pCurNode.KeyNum; i++ {
 			if i == pCurNode.KeyNum || memcmp(key, pCurNode.Keys[i]) == -1 {
-				nodeAddr = pCurNode.Children[i]
+				nodeAddr = pCurNode.Pointers[i]
 				pCurNode = tree.readNodeFromFile(nodeAddr)
 				break
 			}
@@ -280,8 +279,11 @@ func (tree BPlusTree) split(pCurNode *node, pos AddrType) {
 		pNewNode.Right = rightAddr
 		pNewNode.KeyNum = t - 1
 		copy(pNewNode.Keys[:pNewNode.KeyNum], pCurNode.Keys[t+1:])
-		copy(pNewNode.Pointers[:pNewNode.KeyNum], pCurNode.Pointers[t+1:])
-		copy(pNewNode.Children[:pNewNode.KeyNum+1], pCurNode.Children[t+1:])
+		if pCurNode.Leaf() {
+			copy(pNewNode.Pointers[:pNewNode.KeyNum], pCurNode.Pointers[t+1:])
+		} else {
+			copy(pNewNode.Pointers[:pNewNode.KeyNum+1], pCurNode.Pointers[t+1:])
+		}
 		if pCurNode.Leaf() {
 			pNewNode.SetLeaf(true)
 			pNewNode.putKey(0, midKey, midPointer)
@@ -304,8 +306,8 @@ func (tree BPlusTree) split(pCurNode *node, pos AddrType) {
 			pNewRoot := CreateDefaultNode()
 			pNewRoot.KeyNum = 1
 			pNewRoot.Keys[0] = midKey
-			pNewRoot.Children[0] = pos
-			pNewRoot.Children[1] = nextAddr
+			pNewRoot.Pointers[0] = pos
+			pNewRoot.Pointers[1] = nextAddr
 			tree.writeNodeToFile(pNewRoot, newRootAddr)
 		} else {
 			pos = pCurNode.Parent
@@ -315,9 +317,9 @@ func (tree BPlusTree) split(pCurNode *node, pos AddrType) {
 			}
 			// add midKey into node
 			copy(pCurNode.Keys[p+1:], pCurNode.Keys[p:])
-			copy(pCurNode.Children[p+2:], pCurNode.Children[p+1:])
+			copy(pCurNode.Pointers[p+2:], pCurNode.Pointers[p+1:])
 			pCurNode.Keys[p] = midKey
-			pCurNode.Children[p+1] = nextAddr
+			pCurNode.Pointers[p+1] = nextAddr
 			pCurNode.KeyNum++
 			tree.writeNodeToFile(pCurNode, pos)
 			// set the flag to run another iteration
@@ -340,8 +342,11 @@ func (pNode *node) putKey(pos int32, key KeyType, pointer AddrType) {
 
 func (pNode *node) popKey(pos int32) {
 	copy(pNode.Keys[pos:], pNode.Keys[pos+1:])
-	copy(pNode.Pointers[pos:], pNode.Pointers[pos+1:])
-	copy(pNode.Children[pos+1:], pNode.Children[pos+2:])
+	if pNode.Leaf() {
+		copy(pNode.Pointers[pos:], pNode.Pointers[pos+1:])
+	} else {
+		copy(pNode.Pointers[pos+1:], pNode.Pointers[pos+2:])
+	}
 	pNode.KeyNum--
 }
 
@@ -387,18 +392,18 @@ func (tree BPlusTree) Init() {
 
 func (tree BPlusTree) shiftKeysLeft(pLeft *node, pRight *node) {
 	pLeft.Keys[pLeft.KeyNum] = pRight.Keys[0]
-	pLeft.Children[pLeft.KeyNum+1] = pRight.Children[0]
+	pLeft.Pointers[pLeft.KeyNum+1] = pRight.Pointers[0]
 	copy(pRight.Keys[:], pRight.Keys[1:])
-	copy(pRight.Children[:], pRight.Children[1:])
+	copy(pRight.Pointers[:], pRight.Pointers[1:])
 	pLeft.KeyNum++
 	pRight.KeyNum--
 }
 
 func (tree BPlusTree) shiftKeysRight(pLeft *node, pRight *node) {
 	copy(pRight.Keys[1:], pRight.Keys[:])
-	copy(pRight.Children[1:], pRight.Children[:])
+	copy(pRight.Pointers[1:], pRight.Pointers[:])
 	pRight.Keys[0] = pLeft.Keys[pLeft.KeyNum-1]
-	pRight.Children[0] = pLeft.Children[pLeft.KeyNum]
+	pRight.Pointers[0] = pLeft.Pointers[pLeft.KeyNum]
 	pLeft.KeyNum--
 	pRight.KeyNum++
 }
@@ -410,12 +415,12 @@ func (tree BPlusTree) mergeNodes(pDst *node, pSrc *node) {
 }
 
 func (tree BPlusTree) mergeInternalNodes(pDst *node, pSrc *node) {
-	pChild := tree.readNodeFromFile(tree.findMinLeaf(pSrc.Children[0]))
+	pChild := tree.readNodeFromFile(tree.findMinLeaf(pSrc.Pointers[0]))
 	pDst.Keys[pDst.KeyNum] = pChild.Keys[0]
-	pDst.Children[pDst.KeyNum+1] = pSrc.Children[0]
+	pDst.Pointers[pDst.KeyNum+1] = pSrc.Pointers[0]
 	pDst.KeyNum++
 	copy(pDst.Keys[pDst.KeyNum:], pSrc.Keys[:])
-	copy(pDst.Children[pDst.KeyNum+1:], pSrc.Children[1:])
+	copy(pDst.Pointers[pDst.KeyNum+1:], pSrc.Pointers[1:])
 	pDst.KeyNum += pSrc.KeyNum
 }
 
@@ -443,16 +448,16 @@ func (tree BPlusTree) unlinkNode(pNode *node) {
 
 func (tree BPlusTree) rebindParent(pNode *node, newParent AddrType) {
 	for i := int32(0); i <= pNode.KeyNum; i++ {
-		pChild := tree.readNodeFromFile(pNode.Children[i])
+		pChild := tree.readNodeFromFile(pNode.Pointers[i])
 		pChild.Parent = newParent
-		tree.writeNodeToFile(pChild, pNode.Children[i])
+		tree.writeNodeToFile(pChild, pNode.Pointers[i])
 	}
 }
 
 func (tree BPlusTree) findMinLeaf(nodeAddr AddrType) AddrType {
 	pNode := tree.readNodeFromFile(nodeAddr)
 	for !pNode.Leaf() {
-		nodeAddr = pNode.Children[0]
+		nodeAddr = pNode.Pointers[0]
 		pNode = tree.readNodeFromFile(nodeAddr)
 	}
 	return nodeAddr
@@ -469,7 +474,7 @@ func (tree BPlusTree) updatePathToRoot(nodeAddr AddrType) {
 		if pLeftNode.Parent == pNode.Parent {
 			pParent := tree.readNodeFromFile(pNode.Parent)
 			for i := int32(0); i <= pParent.KeyNum; i++ {
-				if pParent.Children[i] == nodeAddr {
+				if pParent.Pointers[i] == nodeAddr {
 					pParent.Keys[i-1] = minKey
 					tree.writeNodeToFile(pParent, pNode.Parent)
 					break
@@ -487,7 +492,7 @@ func (tree BPlusTree) deleteInternal(nodeAddr AddrType, key KeyType, removeFirst
 		var pCurNode = tree.readNodeFromFile(nodeAddr)
 		if removeFirst {
 			copy(pCurNode.Keys[0:], pCurNode.Keys[1:])
-			copy(pCurNode.Children[0:], pCurNode.Children[1:])
+			copy(pCurNode.Pointers[0:], pCurNode.Pointers[1:])
 			pCurNode.KeyNum--
 			tree.writeNodeToFile(pCurNode, nodeAddr)
 			tree.updatePathToRoot(tree.findMinLeaf(nodeAddr))
@@ -514,23 +519,23 @@ func (tree BPlusTree) deleteInternal(nodeAddr AddrType, key KeyType, removeFirst
 		}
 		if pLeftNode != nil && pLeftNode.KeyNum > t-1 {
 			tree.shiftKeysRight(pLeftNode, pCurNode)
-			pChild := tree.readNodeFromFile(pCurNode.Children[0])
+			pChild := tree.readNodeFromFile(pCurNode.Pointers[0])
 			pChild.Parent = nodeAddr
-			tree.writeNodeToFile(pChild, pCurNode.Children[0])
+			tree.writeNodeToFile(pChild, pCurNode.Pointers[0])
 			tree.writeNodeToFile(pLeftNode, pCurNode.Left)
 			tree.writeNodeToFile(pCurNode, nodeAddr)
-			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Children[0]))
-			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Children[1]))
+			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Pointers[0]))
+			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Pointers[1]))
 			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Left))
 			return
 		} else if pRightNode != nil && pRightNode.KeyNum > t-1 {
 			tree.shiftKeysLeft(pCurNode, pRightNode)
-			pChild := tree.readNodeFromFile(pCurNode.Children[pCurNode.KeyNum])
+			pChild := tree.readNodeFromFile(pCurNode.Pointers[pCurNode.KeyNum])
 			pChild.Parent = nodeAddr
-			tree.writeNodeToFile(pChild, pCurNode.Children[pCurNode.KeyNum])
+			tree.writeNodeToFile(pChild, pCurNode.Pointers[pCurNode.KeyNum])
 			tree.writeNodeToFile(pCurNode, nodeAddr)
 			tree.writeNodeToFile(pRightNode, pCurNode.Right)
-			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Children[pCurNode.KeyNum]))
+			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Pointers[pCurNode.KeyNum]))
 			tree.updatePathToRoot(tree.findMinLeaf(pCurNode.Right))
 			return
 		} else {
@@ -566,7 +571,7 @@ func (tree BPlusTree) deleteInternal(nodeAddr AddrType, key KeyType, removeFirst
 				if pRoot.KeyNum == 0 {
 					pRoot.SetUsed(false)
 					tree.writeNodeToFile(pRoot, pHeader.Head)
-					pHeader.Head = pCurNode.Children[0]
+					pHeader.Head = pCurNode.Pointers[0]
 					tree.writeHeaderToFile(pHeader)
 					pCurNode = tree.readNodeFromFile(pHeader.Head)
 					pCurNode.Left = -1
