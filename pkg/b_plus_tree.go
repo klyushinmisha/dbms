@@ -11,7 +11,7 @@ import (
 	"unsafe"
 )
 
-type KeyType [10]byte
+type KeyType [256]byte
 
 func toKeyType(v string) KeyType {
 	var ret KeyType
@@ -34,7 +34,7 @@ func memcmp(a KeyType, b KeyType) int {
 type AddrType int64
 
 // TODO: set more accurate value
-const t = 2
+const t = 100
 
 func calculateCrc32(blob interface{}) uint32 {
 	blobSize := unsafe.Sizeof(blob)
@@ -53,21 +53,6 @@ type header struct {
 	Checksum uint32
 }
 
-
-type bitArray uint8
-
-func (arr *bitArray) Set(value bool, pos int) {
-	if value {
-		*arr |= 1 << pos
-	} else {
-		bitMask := bitArray(^(1 << pos))
-		*arr &= bitMask
-	}
-}
-
-func (arr bitArray) Get(pos int) bool {
-	return (arr >> pos) & 1 == 1
-}
 type nodeFlags struct {
 	Flags bitArray
 }
@@ -87,6 +72,21 @@ func (pFlags *nodeFlags) Used() bool {
 func (pFlags *nodeFlags) SetUsed(value bool) {
 	pFlags.Flags.Set(value, 1)
 }
+
+/*
+
+type node struct {
+	Leaf     bool
+	Parent   int64
+	Left     int64
+	Right    int64
+	Size     int
+	Keys     []string
+	Pointers []int64
+	Children []int64
+}
+
+*/
 
 type node struct {
 	nodeFlags
@@ -174,11 +174,13 @@ func writeNodeToFile(pNode *node, file *os.File) {
 }
 
 type BPlusTree struct {
-	file *os.File
+	file  *os.File
+	cache BPlusTreeCache
 }
 
 func MakeBPlusTree(file *os.File) BPlusTree {
-	return BPlusTree{file}
+	cache := MakeLinkedListCache()
+	return BPlusTree{file, cache}
 }
 
 var ErrKeyNotFound = errors.New("provided key not found")
@@ -640,7 +642,3 @@ func (tree BPlusTree) Delete(key string) error {
 	}
 	return nil
 }
-
-// TODO: after delete insert last node to prevent fragmentation
-// or maybe dispatch free blocks and tag them via bitset
-// or maybe run defragmentation routine like pg_vacuum

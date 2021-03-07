@@ -16,6 +16,7 @@ func fileScopedExec(name string, exec func(*os.File) error) error {
 		if closeErr != nil {
 			log.Fatalln(closeErr)
 		}
+		return
 		removeErr := os.Remove(name)
 		if removeErr != nil {
 			log.Fatalln(removeErr)
