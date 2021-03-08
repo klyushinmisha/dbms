@@ -1,7 +1,8 @@
-package pkg
+package access
 
 import (
 	"bytes"
+	"dbms/pkg/utils"
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
@@ -54,7 +55,7 @@ type header struct {
 }
 
 type nodeFlags struct {
-	Flags bitArray
+	Flags utils.BitArray
 }
 
 func (pFlags *nodeFlags) Leaf() bool {

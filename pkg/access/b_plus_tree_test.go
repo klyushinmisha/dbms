@@ -1,29 +1,11 @@
-package pkg
+package access
 
 import (
+	"dbms/pkg/utils"
 	"log"
 	"os"
 	"testing"
 )
-
-func fileScopedExec(name string, exec func(*os.File) error) error {
-	file, err := os.Create(name)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer func() {
-		closeErr := file.Close()
-		if closeErr != nil {
-			log.Fatalln(closeErr)
-		}
-		return
-		removeErr := os.Remove(name)
-		if removeErr != nil {
-			log.Fatalln(removeErr)
-		}
-	}()
-	return exec(file)
-}
 
 var keys = []string{
 	"GlNVLYANzD",
@@ -1053,7 +1035,7 @@ var keys = []string{
 }
 
 func TestBPlusTree_Insert(t *testing.T) {
-	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
+	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
 		tree := MakeBPlusTree(file)
 		tree.Init()
 		for _, k := range keys {
@@ -1070,7 +1052,7 @@ func TestBPlusTree_Insert(t *testing.T) {
 }
 
 func TestBPlusTree_Find(t *testing.T) {
-	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
+	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
 		tree := MakeBPlusTree(file)
 		tree.Init()
 		for i, k := range keys {
@@ -1097,7 +1079,7 @@ func TestBPlusTree_Find(t *testing.T) {
 }
 
 func TestBPlusTree_Find_Non_Existing(t *testing.T) {
-	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
+	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
 		tree := MakeBPlusTree(file)
 		tree.Init()
 		for i, k := range keys {
@@ -1123,7 +1105,7 @@ func TestBPlusTree_Find_Non_Existing(t *testing.T) {
 // TODO: fix fails for some t size cases
 // update some keys on the way to the root
 func TestBPlusTree_Delete(t *testing.T) {
-	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
+	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
 		tree := MakeBPlusTree(file)
 		tree.Init()
 		keysToDelete := keys
@@ -1166,7 +1148,7 @@ func TestBPlusTree_Delete(t *testing.T) {
 }
 
 func TestBPlusTree_verifyChecksum(t *testing.T) {
-	execErr := fileScopedExec("somefile.bin", func(file *os.File) error {
+	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
 		tree := MakeBPlusTree(file)
 		tree.Init()
 		pHeader := tree.readHeaderFromFile()
