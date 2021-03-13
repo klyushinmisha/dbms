@@ -2,18 +2,11 @@ package storage
 
 import (
 	"github.com/stretchr/testify/assert"
-	"log"
 	"testing"
 )
 
 func TestIndexPage_ReadWriteIndexNode(t *testing.T) {
-	data := make([]byte, 1024, 1024)
-	var p IndexPage
-	err := p.UnmarshalBinary(data)
-	if err != nil {
-		log.Panic(err)
-	}
-	p.Init()
+	p := AllocateIndexPage(1024)
 
 	var node BPlusTreeNode
 	node.Leaf = true

@@ -5,14 +5,9 @@ import (
 	"testing"
 )
 
-func TestHeapPage_ReadWrite(t *testing.T) {
-	data := make([]byte, 1024, 1024)
-	var p HeapPage
-	err := p.UnmarshalBinary(data)
-	if err != nil {
-		log.Panic(err)
-	}
-	p.Init()
+func TestDataPage_ReadWrite(t *testing.T) {
+	var err error
+	p := AllocateDataPage(1024)
 
 	// fill page
 	key := "HELLO"

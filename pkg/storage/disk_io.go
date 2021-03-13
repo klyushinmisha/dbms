@@ -32,23 +32,8 @@ func (dIo *DiskIO) effectiveFragmentSize() int {
 	return dIo.pageSize / 4
 }
 
-func (dIo *DiskIO) DumbWritePos(record *Record) int64 {
-	return -1
-}
-
-func (dIo *DiskIO) DumbWrite(record *Record) int64 {
-	data, marshalErr := record.MarshalBinary()
-	if marshalErr != nil {
-		log.Panic(marshalErr)
-	}
-	pagePos := dIo.freeSpaceMapper.FindFirstFit(len(data))
-	pPage := dIo.ReadPage(pagePos)
-	pPage.Used()
-	return -1
-}
-
-func (dIo *DiskIO) readPageFromDisk(pos int64) *Page {
-	pPage := AllocatePage(dIo.pageSize, HEAP_PAGE)
+func (dIo *DiskIO) readPageFromDisk(pos int64, pageType byte) *HeapPage {
+	pPage := AllocatePage(dIo.pageSize, pageType)
 	_, seekErr := dIo.file.Seek(pos, io.SeekStart)
 	if seekErr != nil {
 		log.Panic(seekErr)
@@ -65,12 +50,17 @@ func (dIo *DiskIO) readPageFromDisk(pos int64) *Page {
 	return pPage
 }
 
-func (dIo *DiskIO) ReadPage(pos int64) *Page {
+func (dIo *DiskIO) ReadDataPage(pos int64) *DataPage {
 	// TODO: add caching
-	return dIo.readPageFromDisk(pos)
+	return DataPageFromHeapPage(dIo.readPageFromDisk(pos, DATA_PAGE))
 }
 
-func (dIo *DiskIO) writePageOnDisk(pos int64, pPage *Page) {
+func (dIo *DiskIO) ReadIndexPage(pos int64) *IndexPage {
+	// TODO: add caching
+	return IndexPageFromHeapPage(dIo.readPageFromDisk(pos, INDEX_PAGE))
+}
+
+func (dIo *DiskIO) writePageOnDisk(pos int64, pPage *HeapPage) {
 	_, seekErr := dIo.file.Seek(pos, io.SeekStart)
 	if seekErr != nil {
 		log.Panic(seekErr)
@@ -85,7 +75,7 @@ func (dIo *DiskIO) writePageOnDisk(pos int64, pPage *Page) {
 	}
 }
 
-func (dIo *DiskIO) WritePage(pos int64, pPage *Page) {
+func (dIo *DiskIO) WritePage(pos int64, pPage *HeapPage) {
 	// TODO: add caching
 	dIo.writePageOnDisk(pos, pPage)
 }
@@ -96,4 +86,12 @@ func (dIo *DiskIO) GetNextPagePosition() int64 {
 		log.Panicln(statErr)
 	}
 	return info.Size()
+}
+
+func (dIo *DiskIO) IsFileEmpty() bool {
+	info, statErr := dIo.file.Stat()
+	if statErr != nil {
+		log.Panicln(statErr)
+	}
+	return info.Size() == 0
 }

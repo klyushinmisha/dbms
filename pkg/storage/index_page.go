@@ -23,8 +23,22 @@ type BPlusTreeNode struct {
 	Pointers []int64
 }
 
+const INDEX_PAGE byte = 1
+
 type IndexPage struct {
-	HeapPage
+	*HeapPage
+}
+
+func AllocateIndexPage(pageSize int) *IndexPage {
+	var p IndexPage
+	p.HeapPage = AllocatePage(pageSize, INDEX_PAGE)
+	return &p
+}
+
+func IndexPageFromHeapPage(p *HeapPage) *IndexPage {
+	var convPage IndexPage
+	convPage.HeapPage = p
+	return &convPage
 }
 
 func (p *IndexPage) WriteIndexNode(node *BPlusTreeNode) {
