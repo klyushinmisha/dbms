@@ -1,6 +1,7 @@
 package access
 
 import (
+	"dbms/pkg/storage"
 	"dbms/pkg/utils"
 	"log"
 	"os"
@@ -1036,13 +1037,12 @@ var keys = []string{
 
 func TestBPlusTree_Insert(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		tree := MakeBPlusTree(file)
+		disk := storage.MakeDiskIO(file, nil, nil, 4096*2)
+		tree := MakeBPlusTree(disk)
 		tree.Init()
 		for _, k := range keys {
-			err := tree.Insert(k, 0xABCD)
-			if err != nil {
-				return err
-			}
+			log.Print(k)
+			tree.Insert(k, 0xABCD)
 		}
 		return nil
 	})
@@ -1053,14 +1053,12 @@ func TestBPlusTree_Insert(t *testing.T) {
 
 func TestBPlusTree_Find(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		tree := MakeBPlusTree(file)
+		disk := storage.MakeDiskIO(file, nil, nil, 4096*2)
+		tree := MakeBPlusTree(disk)
 		tree.Init()
 		for i, k := range keys {
-			err := tree.Insert(k, AddrType(0xABCD+i))
-			if err != nil {
-				return err
-			}
-			_, err = tree.Find(k)
+			tree.Insert(k, int64(0xABCD+i))
+			_, err := tree.Find(k)
 			if err != nil {
 				log.Panicf("Key %s not found\n", k)
 			}
@@ -1080,13 +1078,11 @@ func TestBPlusTree_Find(t *testing.T) {
 
 func TestBPlusTree_Find_Non_Existing(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		tree := MakeBPlusTree(file)
+		disk := storage.MakeDiskIO(file, nil, nil, 4096*2)
+		tree := MakeBPlusTree(disk)
 		tree.Init()
 		for i, k := range keys {
-			err := tree.Insert(k, AddrType(0xABCD+i))
-			if err != nil {
-				return err
-			}
+			tree.Insert(k, int64(0xABCD+i))
 		}
 		invalidKeys := []string{"Z", "H", "J", "W", "K"}
 		for _, k := range invalidKeys {
@@ -1106,14 +1102,12 @@ func TestBPlusTree_Find_Non_Existing(t *testing.T) {
 // update some keys on the way to the root
 func TestBPlusTree_Delete(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		tree := MakeBPlusTree(file)
+		disk := storage.MakeDiskIO(file, nil, nil, 4096*2)
+		tree := MakeBPlusTree(disk)
 		tree.Init()
 		keysToDelete := keys
 		for i, k := range keysToDelete {
-			err := tree.Insert(k, AddrType(0xABCD+i))
-			if err != nil {
-				log.Panic(err)
-			}
+			tree.Insert(k, int64(0xABCD+i))
 		}
 		for _, k := range keysToDelete {
 			_, err := tree.Find(k)
@@ -1139,23 +1133,6 @@ func TestBPlusTree_Delete(t *testing.T) {
 					log.Panicf("Not found untouched key %s during %s delete", k2, k)
 				}
 			}
-		}
-		return nil
-	})
-	if execErr != nil {
-		log.Panic(execErr)
-	}
-}
-
-func TestBPlusTree_verifyChecksum(t *testing.T) {
-	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		tree := MakeBPlusTree(file)
-		tree.Init()
-		pHeader := tree.readHeaderFromFile()
-		pRoot := tree.readNodeFromFile(pHeader.Head)
-		pRoot.updateChecksum()
-		if !pRoot.verifyChecksum() {
-			log.Panic("Checksum is invalid")
 		}
 		return nil
 	})

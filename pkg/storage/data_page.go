@@ -70,7 +70,7 @@ func (p *DataPage) ReadRecord(recordN int) *Record {
 func (p *DataPage) FindRecordByKey(key []byte) (*Record, int) {
 	for n := 0; n < int(p.RecordsNum); n++ {
 		foundRecord := p.ReadRecord(n)
-		if utils.Memcmp(key, foundRecord.key) == 0 {
+		if utils.Memcmp(key, foundRecord.Key) == 0 {
 			return foundRecord, n
 		}
 	}
@@ -89,7 +89,7 @@ func (p *DataPage) DeleteRecordByKey(key []byte) bool {
 var ErrPageIsFull = errors.New("page is full")
 
 // Expected workflow is:
-//     - if record size is larger than heap block data size then panic (TODO: add spanning records)
+//     - if record size is larger than heap block Data size then panic (TODO: add spanning records)
 //     - find item in index
 //     - if found
 //         - delete
@@ -103,7 +103,7 @@ func (p *DataPage) WriteRecord(record *Record) error {
 	var marshalErr error
 	// get free space with potentially removed record
 	freeSpace := int(p.FreeSpace)
-	foundRecord, n := p.FindRecordByKey(record.key)
+	foundRecord, n := p.FindRecordByKey(record.Key)
 	if foundRecord != nil {
 		freeSpace += foundRecord.Size()
 	}
@@ -128,4 +128,11 @@ func (p *DataPage) WriteRecord(record *Record) error {
 	// 4 is int32 size
 	p.FreeSpace -= int32(4 + len(recordData))
 	return nil
+}
+
+func (p *DataPage) WriteByKey(key string, data []byte) error {
+	var record Record
+	record.Key = []byte(key)
+	record.Data = data
+	return p.WriteRecord(&record)
 }

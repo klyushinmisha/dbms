@@ -64,7 +64,12 @@ func (p *IndexPage) WriteIndexNode(node *BPlusTreeNode) {
 		keyEnd = keyStart
 		p.writePointer(i+1, int32(keyStart))
 	}
-	pointerStart := keyStart - 8
+	var pointerStart int
+	if node.Size == 0 {
+		pointerStart = headerWritePos - 8
+	} else {
+		pointerStart = keyStart - 8
+	}
 	for i := 0; i < int(node.Size)+1; i++ {
 		p.FreeSpace -= 12
 		if p.FreeSpace < 0 {
@@ -97,9 +102,10 @@ func (p *IndexPage) ReadIndexNode() *BPlusTreeNode {
 		keyStart := p.readPointer(i + 1)
 		// TODO: maybe []byte?
 		node.Keys[i] = string(p.data[keyStart:keyEnd])
+		keyEnd = keyStart
 	}
 	for i := 0; i < int(node.Size)+1; i++ {
-		pointerStart := p.readPointer(int(node.Size) + 1)
+		pointerStart := p.readPointer(int(node.Size) + i + 1)
 		reader = bytes.NewReader(p.data[pointerStart : pointerStart+8])
 		readErr = binary.Read(reader, binary.LittleEndian, &node.Pointers[i])
 		if readErr != nil {

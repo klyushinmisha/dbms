@@ -7,20 +7,20 @@ import (
 )
 
 type Record struct {
-	key  []byte
-	data []byte
+	Key  []byte
+	Data []byte
 }
 
 func NewRecord(key []byte, data []byte) *Record {
 	var record Record
-	record.key = key
-	record.data = data
+	record.Key = key
+	record.Data = data
 	return &record
 }
 
 func (r *Record) Size() int {
 	// 4 is int32 size
-	return len(r.key) + len(r.data) + 4 + 4
+	return len(r.Key) + len(r.Data) + 4 + 4
 }
 
 func (r *Record) MarshalBinary() ([]byte, error) {
@@ -28,22 +28,22 @@ func (r *Record) MarshalBinary() ([]byte, error) {
 	var writeErr error
 	var size int32
 
-	size = int32(len(r.key))
+	size = int32(len(r.Key))
 	writeErr = binary.Write(pBuffer, binary.LittleEndian, size)
 	if writeErr != nil {
 		log.Panic(writeErr)
 	}
-	_, writeErr = pBuffer.Write(r.key)
+	_, writeErr = pBuffer.Write(r.Key)
 	if writeErr != nil {
 		log.Panic(writeErr)
 	}
 
-	size = int32(len(r.data))
+	size = int32(len(r.Data))
 	writeErr = binary.Write(pBuffer, binary.LittleEndian, size)
 	if writeErr != nil {
 		log.Panic(writeErr)
 	}
-	_, writeErr = pBuffer.Write(r.data)
+	_, writeErr = pBuffer.Write(r.Data)
 	if writeErr != nil {
 		log.Panic(writeErr)
 	}
@@ -59,8 +59,8 @@ func (r *Record) UnmarshalBinary(data []byte) error {
 	if readErr != nil {
 		log.Panic(readErr)
 	}
-	r.key = make([]byte, size)
-	_, readErr = pBuffer.Read(r.key)
+	r.Key = make([]byte, size)
+	_, readErr = pBuffer.Read(r.Key)
 	if readErr != nil {
 		log.Panic(readErr)
 	}
@@ -69,8 +69,8 @@ func (r *Record) UnmarshalBinary(data []byte) error {
 	if readErr != nil {
 		log.Panic(readErr)
 	}
-	r.data = make([]byte, size)
-	_, readErr = pBuffer.Read(r.data)
+	r.Data = make([]byte, size)
+	_, readErr = pBuffer.Read(r.Data)
 	if readErr != nil {
 		log.Panic(readErr)
 	}

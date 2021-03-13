@@ -40,8 +40,8 @@ func AllocatePage(pageSize int, pageType byte) *HeapPage {
 	dataSize := pageSize - heapPageHeaderSize - pageChecksumSize
 	pPage.RecordsNum = 0
 	pPage.Type = pageType
-	pPage.FreeSpace = int32(len(pPage.data))
 	pPage.data = make([]byte, dataSize)
+	pPage.FreeSpace = int32(len(pPage.data))
 	return pPage
 }
 
@@ -79,7 +79,7 @@ func (p *HeapPage) UnmarshalBinary(data []byte) error {
 	if p.checksum != crc32.ChecksumIEEE(pBuffer.Bytes()) {
 		return ErrChecksum
 	}
-	pBuffer = bytes.NewBuffer(data)
+	pBuffer = bytes.NewBuffer(data[:pageNoChecksumSize])
 	readErr = binary.Read(pBuffer, binary.LittleEndian, &p.heapPageHeader)
 	if readErr != nil {
 		log.Panic(readErr)

@@ -28,10 +28,10 @@ func TestDataPage_ReadWrite(t *testing.T) {
 		if rec == nil {
 			break
 		}
-		if key != string(rec.key) {
+		if key != string(rec.Key) {
 			log.Panic("keys not equal")
 		}
-		if recData != string(rec.data) {
+		if recData != string(rec.Data) {
 			log.Panic("datas not equal")
 		}
 		key += "_"
@@ -56,10 +56,10 @@ func TestDataPage_ReadWrite(t *testing.T) {
 		if rec == nil {
 			break
 		}
-		if key != string(rec.key) {
+		if key != string(rec.Key) {
 			log.Panic("keys not equal")
 		}
-		if recData != string(rec.data) {
+		if recData != string(rec.Data) {
 			log.Panic("datas not equal")
 		}
 		key += "_"

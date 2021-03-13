@@ -18,10 +18,10 @@ func TestRecord_ReadWrite(t *testing.T) {
 	if err != nil {
 		log.Panic(err)
 	}
-	if key != string(recCopy.key) {
+	if key != string(recCopy.Key) {
 		log.Panic("keys not equal")
 	}
-	if data != string(recCopy.data) {
+	if data != string(recCopy.Data) {
 		log.Panic("datas not equal")
 	}
 }

@@ -10,7 +10,7 @@ type DiskIO struct {
 	file            *os.File
 	freeSpaceMapper *FreeSpaceMapper
 	usedBlockMapper *UsedBlockMapper
-	pageSize        int
+	PageSize        int
 }
 
 // MakeDiskIO is constructor for DiskIO. If nil PageCache is passed, the cache will be ignored
@@ -24,21 +24,25 @@ func MakeDiskIO(
 		file:            file,
 		freeSpaceMapper: freeSpaceMapper,
 		usedBlockMapper: usedBlockMapper,
-		pageSize:        pageSize,
+		PageSize:        pageSize,
 	}
 }
 
+func (dIo *DiskIO) Finalize() error {
+	return dIo.file.Close()
+}
+
 func (dIo *DiskIO) effectiveFragmentSize() int {
-	return dIo.pageSize / 4
+	return dIo.PageSize / 4
 }
 
 func (dIo *DiskIO) readPageFromDisk(pos int64, pageType byte) *HeapPage {
-	pPage := AllocatePage(dIo.pageSize, pageType)
+	pPage := AllocatePage(dIo.PageSize, pageType)
 	_, seekErr := dIo.file.Seek(pos, io.SeekStart)
 	if seekErr != nil {
 		log.Panic(seekErr)
 	}
-	pageBlob := make([]byte, dIo.pageSize)
+	pageBlob := make([]byte, dIo.PageSize)
 	_, readErr := dIo.file.Read(pageBlob)
 	if readErr != nil {
 		log.Panic(seekErr)
