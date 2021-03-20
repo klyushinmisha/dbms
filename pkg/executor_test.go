@@ -1,6 +1,8 @@
 package pkg
 
 import (
+	"dbms/pkg/cache/lru_cache"
+	"dbms/pkg/storage"
 	"dbms/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"log"
@@ -18,8 +20,13 @@ func TestExecutor_GetSet(t *testing.T) {
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			e := InitExecutor(config.PageSize, indexFile, dataFile, config.CacheSize)
-			defer e.Finalize()
+			indexCache := lru_cache.NewLRUCache(config.CacheSize)
+			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, nil)
+			defer indexStorage.Finalize()
+			dataCache := lru_cache.NewLRUCache(config.CacheSize)
+			dataStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, dataCache, nil)
+			defer dataStorage.Finalize()
+			e := InitExecutor(indexStorage, dataStorage)
 			e.Set("HELLO", []byte("WORLD"))
 			data, ok := e.Get("HELLO")
 			if !ok {
@@ -55,8 +62,13 @@ func TestExecutor_SetDelete(t *testing.T) {
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			e := InitExecutor(config.PageSize, indexFile, dataFile, config.CacheSize)
-			defer e.Finalize()
+			indexCache := lru_cache.NewLRUCache(config.CacheSize)
+			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, nil)
+			defer indexStorage.Finalize()
+			dataCache := lru_cache.NewLRUCache(config.CacheSize)
+			dataStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, dataCache, nil)
+			defer dataStorage.Finalize()
+			e := InitExecutor(indexStorage, dataStorage)
 			e.Set("HELLO", []byte("WORLD"))
 			e.Set("ANOTHER ONE", []byte("ANOTHER WORLD"))
 
