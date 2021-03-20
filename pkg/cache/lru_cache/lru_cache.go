@@ -1,4 +1,4 @@
-package cache
+package lru_cache
 
 import (
 	"container/list"
@@ -55,6 +55,9 @@ func (c *LRUCache) Get(key int64) (interface{}, bool) {
 	return listItem.Value.(*lruCacheItem).item, true
 }
 
+// PruneAll is utility method for pages pruning
+// NOTE: cache methods calls in exec method will lead to deadlock (cache locks and calls exec; exec calls cache)!!!
+// TODO: remove the method further
 func (c *LRUCache) PruneAll(exec func(int64, interface{})) {
 	c.mux.Lock()
 	defer c.mux.Unlock()

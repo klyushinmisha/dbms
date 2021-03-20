@@ -1,14 +1,16 @@
-package storage
+package bp_tree
 
 import (
+	"dbms/pkg/storage"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-func TestIndexPage_ReadWriteIndexNode(t *testing.T) {
-	p := AllocateIndexPage(1024)
+func TestBPTreePageAdapter_ReadWriteIndexNode(t *testing.T) {
+	p := storage.AllocatePage(1024)
+	bpa := newBPTreePageAdapter(p)
 
-	var node BPlusTreeNode
+	var node BPTreeNode
 	node.SetLeaf(true)
 	node.Parent = -1
 	node.Left = 2
@@ -17,7 +19,7 @@ func TestIndexPage_ReadWriteIndexNode(t *testing.T) {
 	node.Keys = []string{"HELLO"}
 	node.Pointers = []int64{1, 1}
 
-	p.WriteIndexNode(&node)
-	nodeCopy := p.ReadIndexNode()
+	bpa.WriteNode(&node)
+	nodeCopy := bpa.ReadNode()
 	assert.Equal(t, node, *nodeCopy)
 }

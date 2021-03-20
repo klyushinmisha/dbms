@@ -1,4 +1,4 @@
-package storage
+package data
 
 import (
 	"log"
@@ -13,7 +13,7 @@ func TestRecord_ReadWrite(t *testing.T) {
 	if err != nil {
 		log.Panic(err)
 	}
-	var recCopy Record
+	var recCopy record
 	err = recCopy.UnmarshalBinary(blob)
 	if err != nil {
 		log.Panic(err)

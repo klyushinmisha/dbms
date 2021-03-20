@@ -7,16 +7,25 @@ import (
 	"errors"
 	"hash/crc32"
 	"log"
-	"unsafe"
 )
 
-var heapPageHeaderSize = 10
+var (
+	ErrChecksum = errors.New("corrupted payload: page checksum mismatch")
+)
 
+// TODO: add links to prev and next page for linear scan ability
 type heapPageHeader struct {
-	Flags      utils.BitArray
-	Type       uint8
-	RecordsNum int32
-	FreeSpace  int32
+	Flags     utils.BitArray
+	records   int32
+	freeSpace int32
+}
+
+func (ph *heapPageHeader) Records() int {
+	return int(ph.records)
+}
+
+func (ph *heapPageHeader) FreeSpace() int {
+	return int(ph.freeSpace)
 }
 
 func (ph *heapPageHeader) Used() bool {
@@ -27,85 +36,128 @@ func (ph *heapPageHeader) SetUsed(value bool) {
 	ph.Flags.Set(value, 0)
 }
 
-var pageChecksumSize = 4
+const (
+	// uint8 + int32 + int32
+	heapPageHeaderSize = 9
+	// int32
+	heapPageChecksumSize = 4
+	// int32
+	HeapRecordPointerSize = 4
+)
 
+// TODO: move data page records and pointers manipulations to HeapPage
 type HeapPage struct {
 	heapPageHeader
-	data     []byte
+	Data     []byte
 	checksum uint32
 }
 
-func AllocatePage(pageSize int, pageType byte) *HeapPage {
-	pPage := new(HeapPage)
-	dataSize := pageSize - heapPageHeaderSize - pageChecksumSize
-	pPage.RecordsNum = 0
-	pPage.Type = pageType
-	pPage.data = make([]byte, dataSize)
-	pPage.FreeSpace = int32(len(pPage.data))
-	return pPage
+func AllocatePage(pageSize int) *HeapPage {
+	var page HeapPage
+	page.records = 0
+	page.Data = make([]byte, pageSize-heapPageHeaderSize-heapPageChecksumSize)
+	page.freeSpace = int32(len(page.Data))
+	return &page
 }
 
 func (p *HeapPage) MarshalBinary() ([]byte, error) {
-	var pBuffer = new(bytes.Buffer)
-	var writeErr error
-
-	writeErr = binary.Write(pBuffer, binary.LittleEndian, p.heapPageHeader)
-	if writeErr != nil {
+	buf := new(bytes.Buffer)
+	if writeErr := binary.Write(buf, binary.LittleEndian, p.heapPageHeader); writeErr != nil {
 		log.Panic(writeErr)
 	}
-	_, writeErr = pBuffer.Write(p.data)
-	if writeErr != nil {
+	if _, writeErr := buf.Write(p.Data); writeErr != nil {
 		log.Panic(writeErr)
 	}
-	p.checksum = crc32.ChecksumIEEE(pBuffer.Bytes())
-	writeErr = binary.Write(pBuffer, binary.LittleEndian, p.checksum)
-	if writeErr != nil {
+	p.checksum = crc32.ChecksumIEEE(buf.Bytes())
+	if writeErr := binary.Write(buf, binary.LittleEndian, p.checksum); writeErr != nil {
 		log.Panic(writeErr)
 	}
-	return pBuffer.Bytes(), nil
+	return buf.Bytes(), nil
 }
 
-var ErrChecksum = errors.New("corrupted payload: page checksum mismatch")
-
 func (p *HeapPage) UnmarshalBinary(data []byte) error {
-	var readErr error
-	pageNoChecksumSize := len(data) - int(unsafe.Sizeof(p.checksum))
-	var pBuffer = bytes.NewBuffer(data[pageNoChecksumSize:])
-	readErr = binary.Read(pBuffer, binary.LittleEndian, &p.checksum)
-	if readErr != nil {
+	pageNoChecksumSize := len(data) - heapPageChecksumSize
+	crcBuf := bytes.NewBuffer(data[pageNoChecksumSize:])
+	if readErr := binary.Read(crcBuf, binary.LittleEndian, &p.checksum); readErr != nil {
 		log.Panic(readErr)
 	}
-	pBuffer = bytes.NewBuffer(data[:pageNoChecksumSize])
-	if p.checksum != crc32.ChecksumIEEE(pBuffer.Bytes()) {
+	buf := bytes.NewBuffer(data[:pageNoChecksumSize])
+	if p.checksum != crc32.ChecksumIEEE(buf.Bytes()) {
 		return ErrChecksum
 	}
-	pBuffer = bytes.NewBuffer(data[:pageNoChecksumSize])
-	readErr = binary.Read(pBuffer, binary.LittleEndian, &p.heapPageHeader)
-	if readErr != nil {
+	if readErr := binary.Read(buf, binary.LittleEndian, &p.heapPageHeader); readErr != nil {
 		log.Panic(readErr)
 	}
-	p.data = pBuffer.Bytes()
+	p.Data = buf.Bytes()
 	return nil
 }
 
-func (p *HeapPage) readPointer(pointerNum int) int32 {
-	var pointer int32
-	// 4 is int32 size
-	readBias := pointerNum * 4
-	reader := bytes.NewReader(p.data[readBias : readBias+4])
-	readErr := binary.Read(reader, binary.LittleEndian, &pointer)
-	if readErr != nil {
-		log.Panic(readErr)
+func (p *HeapPage) AppendData(data []byte) {
+	recEnd := len(p.Data)
+	if p.records != 0 {
+		recEnd = int(p.readPointer(int(p.records) - 1))
 	}
-	return pointer
+	recStart := recEnd - len(data)
+	copy(p.Data[recStart:], data)
+	p.writePointer(int(p.records), int32(recStart))
+	p.records++
+	p.freeSpace -= int32(HeapRecordPointerSize + len(data))
 }
 
-func (p *HeapPage) writePointer(pointerNum int, pointer int32) {
-	// 4 is int32 size
-	writeBias := pointerNum * 4
-	buffer := bytes.NewBuffer(p.data[writeBias:writeBias])
-	writeErr := binary.Write(buffer, binary.LittleEndian, pointer)
-	if writeErr != nil {
+func (p *HeapPage) ReadData(n int) []byte {
+	var recData []byte
+	if n < 0 || n >= int(p.records) {
+		return nil
+	}
+	recStart := p.readPointer(n)
+	if n == 0 {
+		// last rec
+		recData = p.Data[recStart:]
+	} else {
+		recEnd := p.readPointer(n - 1)
+		recData = p.Data[recStart:recEnd]
+	}
+	return recData
+}
+
+func (p *HeapPage) DeleteData(n int) {
+	recStart := int(p.readPointer(n))
+	recEnd := len(p.Data)
+	if n != 0 {
+		recEnd = int(p.readPointer(n - 1))
+	}
+	recLen := recEnd - recStart
+	blkStart := int(p.readPointer(int(p.records - 1)))
+	blkEnd := recStart
+	// remove record
+	copy(p.Data[blkStart+recLen:blkEnd+recLen], p.Data[blkStart:blkEnd])
+	// remove pointer from payload
+	ptrSize := HeapRecordPointerSize
+	blkStart = n * ptrSize
+	blkEnd = int(p.records-1) * ptrSize
+	copy(p.Data[blkStart:blkEnd], p.Data[blkStart+ptrSize:blkEnd+ptrSize])
+	p.records--
+	p.freeSpace += int32(ptrSize + recLen)
+	// rebind pointers
+	for n := n; n < int(p.records); n++ {
+		p.writePointer(n, p.readPointer(n)+int32(recLen))
+	}
+}
+
+func (p *HeapPage) readPointer(ptrN int) int32 {
+	var ptr int32
+	readBias := ptrN * HeapRecordPointerSize
+	reader := bytes.NewReader(p.Data[readBias : readBias+HeapRecordPointerSize])
+	if readErr := binary.Read(reader, binary.LittleEndian, &ptr); readErr != nil {
+		log.Panic(readErr)
+	}
+	return ptr
+}
+
+func (p *HeapPage) writePointer(ptrN int, ptr int32) {
+	writeBias := ptrN * HeapRecordPointerSize
+	writer := bytes.NewBuffer(p.Data[writeBias:writeBias])
+	if writeErr := binary.Write(writer, binary.LittleEndian, ptr); writeErr != nil {
 		log.Panic(writeErr)
 	}
 }

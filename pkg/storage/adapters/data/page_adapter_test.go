@@ -1,20 +1,22 @@
-package storage
+package data
 
 import (
+	"dbms/pkg/storage"
 	"log"
 	"testing"
 )
 
-func TestDataPage_ReadWrite(t *testing.T) {
+func TestDataPageAdapter_ReadWrite(t *testing.T) {
 	var err error
-	p := AllocateDataPage(1024)
+	p := storage.AllocatePage(1024)
+	dpa := newDataPageAdapter(p)
 
 	// fill page
 	key := "HELLO"
 	recData := "__INITIAL_DATA__"
 	for {
 		rec := NewRecord([]byte(key), []byte(recData))
-		err = p.WriteRecord(rec)
+		err = dpa.WriteRecord(rec)
 		if err == ErrPageIsFull {
 			break
 		}
@@ -24,7 +26,7 @@ func TestDataPage_ReadWrite(t *testing.T) {
 	// check records
 	key = "HELLO"
 	for i := 0; ; i++ {
-		rec := p.ReadRecord(i)
+		rec := dpa.ReadRecord(i)
 		if rec == nil {
 			break
 		}
@@ -42,7 +44,7 @@ func TestDataPage_ReadWrite(t *testing.T) {
 	recData = "OVERRIDE_DATA"
 	for {
 		rec := NewRecord([]byte(key), []byte(recData))
-		err = p.WriteRecord(rec)
+		err = dpa.WriteRecord(rec)
 		if err == ErrPageIsFull {
 			break
 		}
@@ -52,7 +54,7 @@ func TestDataPage_ReadWrite(t *testing.T) {
 	// check overridden records
 	key = "HELLO"
 	for i := 0; ; i++ {
-		rec := p.ReadRecord(i)
+		rec := dpa.ReadRecord(i)
 		if rec == nil {
 			break
 		}

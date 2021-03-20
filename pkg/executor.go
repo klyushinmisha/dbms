@@ -2,83 +2,70 @@ package pkg
 
 import (
 	"dbms/pkg/access"
-	"dbms/pkg/cache"
+	"dbms/pkg/access/bp_tree"
 	"dbms/pkg/storage"
+	bpAdapter "dbms/pkg/storage/adapters/bp_tree"
+	dataAdapter "dbms/pkg/storage/adapters/data"
 	"log"
-	"os"
 )
 
 type Executor struct {
-	index     *access.BPlusTree
-	indexDisk *storage.IndexDiskIO
-	disk      *storage.DataDiskIO
+	index access.Index
+	da    *dataAdapter.DataAdapter
 }
 
-func InitExecutor(pageSize int, indexFile *os.File, dataFile *os.File, cacheSize int) *Executor {
+func InitExecutor(
+	indexStorage *storage.HeapPageStorage,
+	dataStorage *storage.HeapPageStorage,
+) *Executor {
 	var e Executor
-	diskCache := cache.NewLRUCache(cacheSize)
-	e.disk = storage.NewDataDiskIO(storage.MakeDiskIO(dataFile, nil, nil, diskCache, pageSize))
-	indexCache := cache.NewLRUCache(cacheSize)
-	e.indexDisk = storage.NewIndexDiskIO(storage.MakeDiskIO(indexFile, nil, nil, indexCache, pageSize))
-	e.index = access.MakeBPlusTree(100, e.indexDisk)
+	e.da = dataAdapter.NewDataAdapter(dataStorage)
+	e.index = bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(indexStorage))
 	e.index.Init()
 	return &e
 }
 
-func (e *Executor) Finalize() {
-	e.disk.Finalize()
-	e.indexDisk.Finalize()
-}
-
 func (e *Executor) Get(key string) ([]byte, bool) {
-	pointer, findErr := e.index.Find(key)
-	if findErr == access.ErrKeyNotFound {
+	pos, findErr := e.index.Find(key)
+	if findErr == bp_tree.ErrKeyNotFound {
 		return nil, false
 	}
-	page := e.disk.ReadPage(pointer)
-	record, _ := page.FindRecordByKey([]byte(key))
-	if record == nil {
-		log.Panic("index and data pages mismatch")
+	data, findErr := e.da.FindAtPos(key, pos)
+	if findErr != nil {
+		log.Panic("index and data page mismatch")
 	}
-	return record.Data, true
+	return data, true
 }
 
 func (e *Executor) Set(key string, data []byte) {
-	allocateNewDataPage := true
-	pointer, findErr := e.index.Find(key)
-	if findErr == nil {
-		dataPage := e.disk.ReadPage(pointer)
-		writeErr := dataPage.WriteByKey(key, data)
-		if writeErr == nil {
-			allocateNewDataPage = false
-		} else {
-			dataPage.DeleteRecordByKey([]byte(key))
+	pos, findErr := e.index.Find(key)
+	if findErr != bp_tree.ErrKeyNotFound {
+		if delErr := e.da.DeleteAtPos(key, pos); delErr != dataAdapter.ErrRecordNotFound {
+			log.Panic("index and data page mismatch")
 		}
-		e.disk.WritePage(pointer, dataPage)
+		writeErr := e.da.WriteAtPos(key, data, pos)
+		if writeErr == nil {
+			return
+		}
 	}
 	// TODO: instead of allocation use free space map
-	if allocateNewDataPage {
-		pos := e.disk.GetNextPagePosition()
-		dataPage := storage.AllocateDataPage(e.disk.PageSize())
-		writeErr := dataPage.WriteByKey(key, data)
-		if writeErr != nil {
-			log.Panic("can't fit value on page")
-		}
-		e.disk.WritePage(pos, dataPage)
-		e.index.Insert(key, pos)
+	writePos, writeErr := e.da.Write(key, data)
+	if writeErr != nil {
+		log.Panic("can't fit value on free page")
 	}
+	e.index.Insert(key, writePos)
 }
 
 func (e *Executor) Delete(key string) bool {
-	pointer, findErr := e.index.Find(key)
-	if findErr == access.ErrKeyNotFound {
+	pos, findErr := e.index.Find(key)
+	if findErr == bp_tree.ErrKeyNotFound {
 		return false
 	}
-	dataPage := e.disk.ReadPage(pointer)
-	dataPage.DeleteRecordByKey([]byte(key))
-	e.disk.WritePage(pointer, dataPage)
-	if deleteErr := e.index.Delete(key); deleteErr == access.ErrKeyNotFound {
-		log.Panic("index and data pages mismatch")
+	if delErr := e.da.DeleteAtPos(key, pos); delErr == dataAdapter.ErrRecordNotFound {
+		log.Panic("index and data page mismatch")
+	}
+	if delErr := e.index.Delete(key); delErr == bp_tree.ErrKeyNotFound {
+		log.Panic("index and data page mismatch")
 	}
 	return true
 }

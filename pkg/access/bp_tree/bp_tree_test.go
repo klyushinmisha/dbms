@@ -1,8 +1,9 @@
-package access
+package bp_tree
 
 import (
-	"dbms/pkg/cache"
+	"dbms/pkg/cache/lru_cache"
 	"dbms/pkg/storage"
+	"dbms/pkg/storage/adapters/bp_tree"
 	"dbms/pkg/utils"
 	"log"
 	"os"
@@ -1036,13 +1037,13 @@ var keys = []string{
 	"QSWyjIdcEl",
 }
 
-func TestBPlusTree_Insert(t *testing.T) {
+func TestBPTree_Insert(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := cache.NewLRUCache(1)
-		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
-		defer dIo.Finalize()
-		disk := storage.NewIndexDiskIO(dIo)
-		tree := MakeBPlusTree(100, disk)
+		indexCache := lru_cache.NewLRUCache(16)
+		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		defer store.Finalize()
+		ba := bp_tree.NewBPTreeAdapter(store)
+		tree := NewBPTree(100, ba)
 		tree.Init()
 		for _, k := range keys {
 			tree.Insert(k, 0xABCD)
@@ -1054,13 +1055,13 @@ func TestBPlusTree_Insert(t *testing.T) {
 	}
 }
 
-func TestBPlusTree_Find(t *testing.T) {
+func TestBPTree_Find(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := cache.NewLRUCache(16)
-		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
-		defer dIo.Finalize()
-		disk := storage.NewIndexDiskIO(dIo)
-		tree := MakeBPlusTree(100, disk)
+		indexCache := lru_cache.NewLRUCache(16)
+		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		defer store.Finalize()
+		ba := bp_tree.NewBPTreeAdapter(store)
+		tree := NewBPTree(100, ba)
 		tree.Init()
 		for i, k := range keys {
 			tree.Insert(k, int64(0xABCD+i))
@@ -1082,13 +1083,13 @@ func TestBPlusTree_Find(t *testing.T) {
 	}
 }
 
-func TestBPlusTree_Find_Non_Existing(t *testing.T) {
+func TestBPTree_Find_Non_Existing(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := cache.NewLRUCache(16)
-		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
-		defer dIo.Finalize()
-		disk := storage.NewIndexDiskIO(dIo)
-		tree := MakeBPlusTree(100, disk)
+		indexCache := lru_cache.NewLRUCache(16)
+		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		defer store.Finalize()
+		ba := bp_tree.NewBPTreeAdapter(store)
+		tree := NewBPTree(100, ba)
 		tree.Init()
 		for i, k := range keys {
 			tree.Insert(k, int64(0xABCD+i))
@@ -1107,13 +1108,13 @@ func TestBPlusTree_Find_Non_Existing(t *testing.T) {
 	}
 }
 
-func TestBPlusTree_Delete(t *testing.T) {
+func TestBPTree_Delete(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := cache.NewLRUCache(16)
-		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
-		defer dIo.Finalize()
-		disk := storage.NewIndexDiskIO(dIo)
-		tree := MakeBPlusTree(100, disk)
+		indexCache := lru_cache.NewLRUCache(16)
+		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		defer store.Finalize()
+		ba := bp_tree.NewBPTreeAdapter(store)
+		tree := NewBPTree(100, ba)
 		tree.Init()
 		keysToDelete := keys
 		for i, k := range keysToDelete {
