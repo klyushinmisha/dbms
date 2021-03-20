@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"dbms/pkg/access"
+	"dbms/pkg/cache"
 	"dbms/pkg/storage"
 	"log"
 	"os"
@@ -13,24 +14,20 @@ type Executor struct {
 	disk      *storage.DataDiskIO
 }
 
-func InitExecutor(pageSize int, indexFile, dataFile *os.File) *Executor {
+func InitExecutor(pageSize int, indexFile *os.File, dataFile *os.File, cacheSize int) *Executor {
 	var e Executor
-	e.disk = storage.NewDataDiskIO(storage.MakeDiskIO(dataFile, nil, nil, pageSize))
-	e.indexDisk = storage.NewIndexDiskIO(storage.MakeDiskIO(indexFile, nil, nil, pageSize))
+	diskCache := cache.NewLRUCache(cacheSize)
+	e.disk = storage.NewDataDiskIO(storage.MakeDiskIO(dataFile, nil, nil, diskCache, pageSize))
+	indexCache := cache.NewLRUCache(cacheSize)
+	e.indexDisk = storage.NewIndexDiskIO(storage.MakeDiskIO(indexFile, nil, nil, indexCache, pageSize))
 	e.index = access.MakeBPlusTree(100, e.indexDisk)
 	e.index.Init()
 	return &e
 }
 
 func (e *Executor) Finalize() {
-	closeErr := e.disk.Finalize()
-	if closeErr != nil {
-		log.Fatalln(closeErr)
-	}
-	closeErr = e.indexDisk.Finalize()
-	if closeErr != nil {
-		log.Fatalln(closeErr)
-	}
+	e.disk.Finalize()
+	e.indexDisk.Finalize()
 }
 
 func (e *Executor) Get(key string) ([]byte, bool) {

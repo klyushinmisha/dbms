@@ -1,6 +1,7 @@
 package access
 
 import (
+	"dbms/pkg/cache"
 	"dbms/pkg/storage"
 	"dbms/pkg/utils"
 	"log"
@@ -1037,11 +1038,13 @@ var keys = []string{
 
 func TestBPlusTree_Insert(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		disk := storage.NewIndexDiskIO(storage.MakeDiskIO(file, nil, nil, 4096*2))
+		indexCache := cache.NewLRUCache(1)
+		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
+		defer dIo.Finalize()
+		disk := storage.NewIndexDiskIO(dIo)
 		tree := MakeBPlusTree(100, disk)
 		tree.Init()
 		for _, k := range keys {
-			log.Print(k)
 			tree.Insert(k, 0xABCD)
 		}
 		return nil
@@ -1053,7 +1056,10 @@ func TestBPlusTree_Insert(t *testing.T) {
 
 func TestBPlusTree_Find(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		disk := storage.NewIndexDiskIO(storage.MakeDiskIO(file, nil, nil, 4096*2))
+		indexCache := cache.NewLRUCache(16)
+		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
+		defer dIo.Finalize()
+		disk := storage.NewIndexDiskIO(dIo)
 		tree := MakeBPlusTree(100, disk)
 		tree.Init()
 		for i, k := range keys {
@@ -1078,7 +1084,10 @@ func TestBPlusTree_Find(t *testing.T) {
 
 func TestBPlusTree_Find_Non_Existing(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		disk := storage.NewIndexDiskIO(storage.MakeDiskIO(file, nil, nil, 4096*2))
+		indexCache := cache.NewLRUCache(16)
+		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
+		defer dIo.Finalize()
+		disk := storage.NewIndexDiskIO(dIo)
 		tree := MakeBPlusTree(100, disk)
 		tree.Init()
 		for i, k := range keys {
@@ -1100,7 +1109,10 @@ func TestBPlusTree_Find_Non_Existing(t *testing.T) {
 
 func TestBPlusTree_Delete(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		disk := storage.NewIndexDiskIO(storage.MakeDiskIO(file, nil, nil, 4096*2))
+		indexCache := cache.NewLRUCache(16)
+		dIo := storage.MakeDiskIO(file, nil, nil, indexCache, 4096*2)
+		defer dIo.Finalize()
+		disk := storage.NewIndexDiskIO(dIo)
 		tree := MakeBPlusTree(100, disk)
 		tree.Init()
 		keysToDelete := keys
@@ -1113,7 +1125,7 @@ func TestBPlusTree_Delete(t *testing.T) {
 				log.Panic(err)
 			}
 		}
-		for i, k := range keysToDelete {
+		for _, k := range keysToDelete {
 			err := tree.Delete(k)
 			if err != nil {
 				log.Panic(err)
@@ -1122,7 +1134,7 @@ func TestBPlusTree_Delete(t *testing.T) {
 			if err != ErrKeyNotFound {
 				log.Panicf("Found deleted key %s", k)
 			}
-			if i == len(keysToDelete)-1 {
+			/*if i == len(keysToDelete)-1 {
 				break
 			}
 			for _, k2 := range keysToDelete[i+1:] {
@@ -1130,7 +1142,7 @@ func TestBPlusTree_Delete(t *testing.T) {
 				if err != nil {
 					log.Panicf("Not found untouched key %s during %s delete", k2, k)
 				}
-			}
+			}*/
 		}
 		return nil
 	})

@@ -12,12 +12,14 @@ func TestExecutor_GetSet(t *testing.T) {
 	config := LoadConfig([]byte(`
 	{
 		"filesPath": ".",
-		"pageSize": 8192
+		"pageSize": 8192,
+		"cacheSize": 16
 	}
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			e := InitExecutor(config.PageSize, indexFile, dataFile)
+			e := InitExecutor(config.PageSize, indexFile, dataFile, config.CacheSize)
+			defer e.Finalize()
 			e.Set("HELLO", []byte("WORLD"))
 			data, ok := e.Get("HELLO")
 			if !ok {
@@ -47,12 +49,14 @@ func TestExecutor_SetDelete(t *testing.T) {
 	config := LoadConfig([]byte(`
 	{
 		"filesPath": ".",
-		"pageSize": 8192
+		"pageSize": 8192,
+		"cacheSize": 16
 	}
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			e := InitExecutor(config.PageSize, indexFile, dataFile)
+			e := InitExecutor(config.PageSize, indexFile, dataFile, config.CacheSize)
+			defer e.Finalize()
 			e.Set("HELLO", []byte("WORLD"))
 			e.Set("ANOTHER ONE", []byte("ANOTHER WORLD"))
 

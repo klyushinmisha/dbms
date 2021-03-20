@@ -9,6 +9,7 @@ import (
 type Config struct {
 	FilesPath string `json:"filesPath"`
 	PageSize  int    `json:"pageSize"`
+	CacheSize int    `json:"cacheSize"`
 }
 
 func LoadConfig(data []byte) *Config {
