@@ -2,6 +2,7 @@ package lru_cache
 
 import (
 	"log"
+	"sync"
 	"testing"
 )
 
@@ -71,4 +72,34 @@ func TestLRUCache_PutPruneAll(t *testing.T) {
 		}
 		i++
 	})
+}
+
+func TestLRUCache_ConcurrentPutGet(t *testing.T) {
+	capacity := 1024
+	cache := NewLRUCache(capacity)
+	var wg sync.WaitGroup
+	wg.Add(capacity)
+	for i := 0; i < capacity; i++ {
+		go func(n int) {
+			item := new(int)
+			*item = n
+			prunedKey, _ := cache.Put(int64(n), item)
+			if prunedKey != -1 {
+				log.Panic("No prune expected")
+			}
+			value, found := cache.Get(int64(n))
+			if !found {
+				log.Panic("key not found")
+			}
+			if *value.(*int) != n {
+				log.Panic("invalid")
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	_, found := cache.Get(int64(capacity))
+	if found {
+		log.Panic("found value for not inserted key")
+	}
 }
