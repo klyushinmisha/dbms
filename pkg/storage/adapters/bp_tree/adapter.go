@@ -15,7 +15,7 @@ func NewBPTreeAdapter(storage *storage.HeapPageStorage) *BPTreeAdapter {
 }
 
 func (ba *BPTreeAdapter) ReadNodeAtPos(pos int64) *BPTreeNode {
-	page := ba.storage.ReadPage(pos)
+	page := ba.storage.ReadPageAtPos(pos)
 	bpa := newBPTreePageAdapter(page)
 	return bpa.ReadNode()
 }
@@ -24,16 +24,14 @@ func (ba *BPTreeAdapter) WriteNodeAtPos(node *BPTreeNode, pos int64) {
 	page := storage.AllocatePage(ba.storage.PageSize())
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
-	ba.storage.WritePage(page, pos)
+	ba.storage.WritePageAtPos(page, pos)
 }
 
 func (ba *BPTreeAdapter) WriteNode(node *BPTreeNode) int64 {
 	page := storage.AllocatePage(ba.storage.PageSize())
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
-	pos := ba.storage.GetFreePagePosition()
-	ba.storage.WritePage(page, pos)
-	return pos
+	return ba.storage.WritePage(page)
 }
 
 func (ba *BPTreeAdapter) Empty() bool {

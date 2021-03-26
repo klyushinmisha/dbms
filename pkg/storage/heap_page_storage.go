@@ -12,7 +12,9 @@ type HeapPageStorage struct {
 	fsm      *FSM
 	cache    cache.Cache
 	pageSize int
-	maxPos   int64
+	// virtualSize is a size of storage in case of cache usage
+	// (when real file size and storage size may differ)
+	virtualSize int64
 }
 
 func (s *HeapPageStorage) Empty() bool {
@@ -39,7 +41,6 @@ func NewHeapPageStorage(
 		fsm:      fsm,
 		cache:    cache,
 		pageSize: pageSize,
-		maxPos:   -int64(pageSize),
 	}
 }
 
@@ -82,7 +83,7 @@ func (s *HeapPageStorage) writePageOnDisk(page *HeapPage, pos int64) {
 	}
 }
 
-func (s *HeapPageStorage) ReadPage(pos int64) *HeapPage {
+func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
 	if s.cache != nil {
 		if page, found := s.cache.Get(pos); found {
 			return page.(*HeapPage)
@@ -97,11 +98,11 @@ func (s *HeapPageStorage) ReadPage(pos int64) *HeapPage {
 	return page
 }
 
-func (s *HeapPageStorage) WritePage(page *HeapPage, pos int64) {
-	if pos > s.maxPos {
-		s.maxPos = pos
-	}
+func (s *HeapPageStorage) WritePageAtPos(page *HeapPage, pos int64) {
 	if s.cache != nil {
+		if pos >= s.virtualSize {
+			s.virtualSize = pos + int64(s.pageSize)
+		}
 		if prunedPos, prunedPage := s.cache.Put(pos, page); prunedPos != -1 {
 			s.writePageOnDisk(prunedPage.(*HeapPage), prunedPos)
 		}
@@ -110,14 +111,24 @@ func (s *HeapPageStorage) WritePage(page *HeapPage, pos int64) {
 	}
 }
 
-func (s *HeapPageStorage) GetFreePagePosition() int64 {
-	// TODO: use FSM index
+func (s *HeapPageStorage) WritePage(page *HeapPage) int64 {
+	if s.fsm != nil {
+		pos := s.fsm.FindFirstFit(255)
+		if pos != -1 {
+			s.WritePageAtPos(page, pos)
+		}
+		return pos
+	}
+	var pos int64
 	if s.cache != nil {
-		return s.maxPos + int64(s.pageSize)
+		pos = s.virtualSize
+	} else {
+		info, statErr := s.file.Stat()
+		if statErr != nil {
+			log.Panicln(statErr)
+		}
+		pos = info.Size()
 	}
-	info, statErr := s.file.Stat()
-	if statErr != nil {
-		log.Panicln(statErr)
-	}
-	return info.Size()
+	s.WritePageAtPos(page, pos)
+	return pos
 }
