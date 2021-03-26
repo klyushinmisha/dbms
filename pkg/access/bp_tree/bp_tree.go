@@ -3,6 +3,7 @@ package bp_tree
 import (
 	"dbms/pkg/storage/adapters/bp_tree"
 	"errors"
+	"sync"
 )
 
 var (
@@ -11,8 +12,9 @@ var (
 
 // TODO: make thread-safe
 type BPTree struct {
-	t  int
-	rw *bpTreeReaderWriter
+	mux sync.RWMutex
+	t   int
+	rw  *bpTreeReaderWriter
 }
 
 func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
@@ -40,6 +42,8 @@ func (t *BPTree) findLeafPos(key string) int64 {
 }
 
 func (t *BPTree) Find(key string) (int64, error) {
+	t.mux.RLock()
+	defer t.mux.RUnlock()
 	leaf := t.rw.ReadNodeFromStorage(t.findLeafPos(key))
 	pos := leaf.findKeyPos(key)
 	if pos == -1 {
@@ -48,6 +52,10 @@ func (t *BPTree) Find(key string) (int64, error) {
 	return leaf.Pointers[pos], nil
 }
 
+// TODO: make lock-free
+// tree can be split in concurrent mode: no nodes deleted;
+// if key is not present in current node (as expected before split iteration), then check right block (it'll be there);
+// so Delete lock must be exclusive per interface method call, Find/Insert lock must be exclusive per iteration
 func (t *BPTree) split(node *BPTreeNode, pos int64) {
 	hdr := t.rw.ReadNodeFromStorage(0)
 	for {
@@ -124,6 +132,8 @@ func (t *BPTree) split(node *BPTreeNode, pos int64) {
 }
 
 func (t *BPTree) Insert(key string, ptr int64) {
+	t.mux.Lock()
+	defer t.mux.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	// find write position in leaf
@@ -340,6 +350,8 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 }
 
 func (t *BPTree) Delete(key string) error {
+	t.mux.Lock()
+	defer t.mux.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	keyPos := leaf.findKeyPos(key)
