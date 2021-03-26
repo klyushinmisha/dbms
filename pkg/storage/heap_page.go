@@ -62,7 +62,12 @@ func AllocatePage(pageSize int) *HeapPage {
 
 func (p *HeapPage) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
-	if writeErr := binary.Write(buf, binary.LittleEndian, p.heapPageHeader); writeErr != nil {
+	hdr := struct {
+		Flags     utils.BitArray
+		Records   int32
+		FreeSpace int32
+	}{p.heapPageHeader.Flags, p.heapPageHeader.records, p.heapPageHeader.freeSpace}
+	if writeErr := binary.Write(buf, binary.LittleEndian, hdr); writeErr != nil {
 		log.Panic(writeErr)
 	}
 	if _, writeErr := buf.Write(p.Data); writeErr != nil {
@@ -85,9 +90,17 @@ func (p *HeapPage) UnmarshalBinary(data []byte) error {
 	if p.checksum != crc32.ChecksumIEEE(buf.Bytes()) {
 		return ErrChecksum
 	}
-	if readErr := binary.Read(buf, binary.LittleEndian, &p.heapPageHeader); readErr != nil {
+	hdr := struct {
+		Flags     utils.BitArray
+		Records   int32
+		FreeSpace int32
+	}{}
+	if readErr := binary.Read(buf, binary.LittleEndian, &hdr); readErr != nil {
 		log.Panic(readErr)
 	}
+	p.heapPageHeader.Flags = hdr.Flags
+	p.heapPageHeader.records = hdr.Records
+	p.heapPageHeader.freeSpace = hdr.FreeSpace
 	p.Data = buf.Bytes()
 	return nil
 }
