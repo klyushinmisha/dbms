@@ -45,9 +45,11 @@ func NewHeapPageStorage(
 }
 
 func (s *HeapPageStorage) Finalize() {
-	s.cache.PruneAll(func(pos int64, page interface{}) {
-		s.writePageOnDisk(page.(*HeapPage), pos)
-	})
+	if s.cache != nil {
+		s.cache.PruneAll(func(pos int64, page interface{}) {
+			s.writePageOnDisk(page.(*HeapPage), pos)
+		})
+	}
 }
 
 /*func (s *HeapPageStorage) effectiveFragmentSize() int {
