@@ -2,6 +2,7 @@ package lru_cache
 
 import (
 	"container/list"
+	"dbms/pkg/concurrency"
 	"sync"
 )
 
@@ -10,64 +11,112 @@ type lruCacheItem struct {
 	item interface{}
 }
 
+// TODO: verify if locks required
+// seems cache will be used only with some storage driver with locking in it
+// so no need to use extra locks for cache itself, only lock pruning pages
 type LRUCache struct {
-	mux   sync.RWMutex
-	cap   int
-	index map[int64]*list.Element
-	cache *list.List
+	cap             int
+	sharedLockTable *concurrency.LockTable
+	index           sync.Map
+	cacheMux        sync.RWMutex
+	cache           *list.List
 }
 
-func NewLRUCache(cap int) *LRUCache {
+func NewLRUCache(cap int, sharedLockTable *concurrency.LockTable) *LRUCache {
 	var c LRUCache
 	c.cap = cap
-	c.index = make(map[int64]*list.Element, cap)
+	c.sharedLockTable = sharedLockTable
 	c.cache = list.New()
 	return &c
 }
 
+// key is expected to be already locked
 func (c *LRUCache) Put(key int64, item interface{}) (int64, interface{}) {
-	var pruneKey = int64(-1)
-	var pruneItem interface{}
-	c.mux.Lock()
-	defer c.mux.Unlock()
-	listItem, found := c.index[key]
-	if found {
-		c.cache.Remove(listItem)
-	} else {
-		if c.cache.Len() == c.cap {
-			pruneKey, pruneItem = c.prune()
-		}
-	}
 	cacheItem := new(lruCacheItem)
 	cacheItem.key = key
 	cacheItem.item = item
-	c.index[key] = c.cache.PushFront(cacheItem)
-	return pruneKey, pruneItem
+	listItem, found := c.index.Load(key)
+	if found {
+		// cache item elevation case
+		func() {
+			c.cacheMux.Lock()
+			defer c.cacheMux.Unlock()
+			c.cache.Remove(listItem.(*list.Element))
+			c.index.Store(key, c.cache.PushFront(cacheItem))
+		}()
+		return -1, nil
+	} else {
+		// cache item prune and insert case
+		pruneKey := int64(-1)
+		pruneItem := interface{}(nil)
+		func() {
+			c.cacheMux.Lock()
+			defer c.cacheMux.Unlock()
+			if c.cache.Len() == c.cap {
+				pruneKey = c.pruneCandidate()
+				if pruneKey == -1 {
+					return
+				}
+				// this condition checks self locking to escape deadlock
+				if pruneKey != key && c.sharedLockTable != nil {
+					// lock key before prune to prevent from race conditions;
+					// must be unlock by cache's client
+					// TODO: may be unsafe and lead to infinite page locks
+					c.sharedLockTable.YieldLock(pruneKey)
+				}
+				pruneKey, pruneItem = c.prune()
+			}
+			c.index.Store(key, c.cache.PushFront(cacheItem))
+		}()
+		return pruneKey, pruneItem
+	}
 }
 
+// key is expected to be already locked
 func (c *LRUCache) Get(key int64) (interface{}, bool) {
-	c.mux.RLock()
-	defer c.mux.RUnlock()
-	listItem, found := c.index[key]
+	listItem, found := c.index.Load(key)
 	if !found {
 		return nil, false
 	}
-	return listItem.Value.(*lruCacheItem).item, true
+	return listItem.(*list.Element).Value.(*lruCacheItem).item, true
 }
 
 // PruneAll is utility method for pages pruning
 // NOTE: cache methods calls in exec method will lead to deadlock (cache locks and calls exec; exec calls cache)!!!
 // TODO: remove the method further
 func (c *LRUCache) PruneAll(exec func(int64, interface{})) {
-	c.mux.Lock()
-	defer c.mux.Unlock()
 	for {
-		pruneKey, pruneItem := c.prune()
+		pruneKey := int64(-1)
+		pruneItem := interface{}(nil)
+		func() {
+			c.cacheMux.Lock()
+			defer c.cacheMux.Unlock()
+			pruneKey = c.pruneCandidate()
+			if pruneKey == -1 {
+				return
+			}
+			if c.sharedLockTable != nil {
+				// lock key before prune to prevent from race conditions;
+				// must be unlock by cache's client
+				// TODO: may be unsafe and lead to infinite page locks
+				c.sharedLockTable.YieldLock(pruneKey)
+			}
+			pruneKey, pruneItem = c.prune()
+		}()
 		if pruneKey == -1 {
 			return
 		}
 		exec(pruneKey, pruneItem)
 	}
+}
+
+func (c *LRUCache) pruneCandidate() int64 {
+	backItem := c.cache.Back()
+	if backItem == nil {
+		return -1
+	}
+	cacheItem := backItem.Value.(*lruCacheItem)
+	return cacheItem.key
 }
 
 func (c *LRUCache) prune() (int64, interface{}) {
@@ -76,7 +125,7 @@ func (c *LRUCache) prune() (int64, interface{}) {
 		return -1, nil
 	}
 	cacheItem := backItem.Value.(*lruCacheItem)
-	delete(c.index, cacheItem.key)
+	c.index.Delete(cacheItem.key)
 	c.cache.Remove(backItem)
 	return cacheItem.key, cacheItem.item
 }

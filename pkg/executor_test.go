@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"dbms/pkg/cache/lru_cache"
+	"dbms/pkg/concurrency"
 	"dbms/pkg/storage"
 	"dbms/pkg/utils"
 	"github.com/stretchr/testify/assert"
@@ -20,11 +21,13 @@ func TestExecutor_GetSet(t *testing.T) {
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			indexCache := lru_cache.NewLRUCache(config.CacheSize)
-			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, nil)
+			sharedIndexLockTable := concurrency.NewLockTable()
+			sharedDataLockTable := concurrency.NewLockTable()
+			indexCache := lru_cache.NewLRUCache(config.CacheSize, sharedIndexLockTable)
+			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, sharedIndexLockTable, nil)
 			defer indexStorage.Finalize()
-			dataCache := lru_cache.NewLRUCache(config.CacheSize)
-			dataStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, dataCache, nil)
+			dataCache := lru_cache.NewLRUCache(config.CacheSize, sharedDataLockTable)
+			dataStorage := storage.NewHeapPageStorage(dataFile, config.PageSize, dataCache, sharedDataLockTable, nil)
 			defer dataStorage.Finalize()
 			e := InitExecutor(indexStorage, dataStorage)
 			e.Set("HELLO", []byte("WORLD"))
@@ -62,11 +65,13 @@ func TestExecutor_SetDelete(t *testing.T) {
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			indexCache := lru_cache.NewLRUCache(config.CacheSize)
-			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, nil)
+			sharedIndexLockTable := concurrency.NewLockTable()
+			sharedDataLockTable := concurrency.NewLockTable()
+			indexCache := lru_cache.NewLRUCache(config.CacheSize, sharedIndexLockTable)
+			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, sharedIndexLockTable, nil)
 			defer indexStorage.Finalize()
-			dataCache := lru_cache.NewLRUCache(config.CacheSize)
-			dataStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, dataCache, nil)
+			dataCache := lru_cache.NewLRUCache(config.CacheSize, sharedDataLockTable)
+			dataStorage := storage.NewHeapPageStorage(dataFile, config.PageSize, dataCache, sharedDataLockTable, nil)
 			defer dataStorage.Finalize()
 			e := InitExecutor(indexStorage, dataStorage)
 			e.Set("HELLO", []byte("WORLD"))

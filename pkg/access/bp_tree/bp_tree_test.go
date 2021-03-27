@@ -2,6 +2,7 @@ package bp_tree
 
 import (
 	"dbms/pkg/cache/lru_cache"
+	"dbms/pkg/concurrency"
 	"dbms/pkg/storage"
 	"dbms/pkg/storage/adapters/bp_tree"
 	"dbms/pkg/utils"
@@ -1037,15 +1038,21 @@ var keys = []string{
 	"QSWyjIdcEl",
 }
 
+func createDefaultStore(file *os.File) *storage.HeapPageStorage {
+	sharedLockTable := concurrency.NewLockTable()
+	indexCache := lru_cache.NewLRUCache(16, sharedLockTable)
+	return storage.NewHeapPageStorage(file, 8192, indexCache, sharedLockTable, nil)
+}
+
 func TestBPTree_Insert(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := lru_cache.NewLRUCache(16)
-		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		store := createDefaultStore(file)
 		defer store.Finalize()
 		ba := bp_tree.NewBPTreeAdapter(store)
 		tree := NewBPTree(100, ba)
 		tree.Init()
 		for _, k := range keys {
+			log.Print(k)
 			tree.Insert(k, 0xABCD)
 		}
 		return nil
@@ -1057,8 +1064,7 @@ func TestBPTree_Insert(t *testing.T) {
 
 func TestBPTree_Find(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := lru_cache.NewLRUCache(16)
-		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		store := createDefaultStore(file)
 		defer store.Finalize()
 		ba := bp_tree.NewBPTreeAdapter(store)
 		tree := NewBPTree(100, ba)
@@ -1085,8 +1091,7 @@ func TestBPTree_Find(t *testing.T) {
 
 func TestBPTree_Find_Non_Existing(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := lru_cache.NewLRUCache(16)
-		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		store := createDefaultStore(file)
 		defer store.Finalize()
 		ba := bp_tree.NewBPTreeAdapter(store)
 		tree := NewBPTree(100, ba)
@@ -1110,8 +1115,7 @@ func TestBPTree_Find_Non_Existing(t *testing.T) {
 
 func TestBPTree_Delete(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		indexCache := lru_cache.NewLRUCache(16)
-		store := storage.NewHeapPageStorage(file, 4096*2, indexCache, nil)
+		store := createDefaultStore(file)
 		defer store.Finalize()
 		ba := bp_tree.NewBPTreeAdapter(store)
 		tree := NewBPTree(100, ba)
