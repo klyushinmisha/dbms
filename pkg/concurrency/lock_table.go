@@ -16,7 +16,7 @@ func NewLockTable() *LockTable {
 	return &t
 }
 
-func (t *LockTable) tryLock(key int64) bool {
+func (t *LockTable) TryLock(key int64) bool {
 	t.mux.Lock()
 	defer t.mux.Unlock()
 	locked, found := t.table[key]
@@ -28,7 +28,7 @@ func (t *LockTable) tryLock(key int64) bool {
 }
 
 func (t *LockTable) YieldLock(key int64) {
-	for !t.tryLock(key) {
+	for !t.TryLock(key) {
 		// allow other goroutines to work if can't lock page
 		// TODO: maybe use conditional variable (set after Unlock; check and reset if set here)
 		runtime.Gosched()

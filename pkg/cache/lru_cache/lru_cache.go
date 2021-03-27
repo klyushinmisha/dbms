@@ -49,25 +49,34 @@ func (c *LRUCache) Put(key int64, item interface{}) (int64, interface{}) {
 		// cache item prune and insert case
 		pruneKey := int64(-1)
 		pruneItem := interface{}(nil)
-		func() {
-			c.cacheMux.Lock()
-			defer c.cacheMux.Unlock()
-			if c.cache.Len() == c.cap {
-				pruneKey = c.pruneCandidate()
-				if pruneKey == -1 {
-					return
+		for {
+			mustContinue := func() bool {
+				// deadlock: client locks pos, calls Put, but locked here and underlying code waits for page unlock
+				c.cacheMux.Lock()
+				defer c.cacheMux.Unlock()
+				if c.cache.Len() == c.cap {
+					pruneKey = c.pruneCandidate()
+					if pruneKey == -1 {
+						return false
+					}
+					// this condition checks self locking to escape deadlock
+					if pruneKey != key && c.sharedLockTable != nil {
+						// lock key before prune to prevent from race conditions;
+						// must be unlock by cache's client
+						// TODO: may be unsafe and lead to infinite page locks
+						if !c.sharedLockTable.TryLock(pruneKey) {
+							return true
+						}
+					}
+					pruneKey, pruneItem = c.prune()
 				}
-				// this condition checks self locking to escape deadlock
-				if pruneKey != key && c.sharedLockTable != nil {
-					// lock key before prune to prevent from race conditions;
-					// must be unlock by cache's client
-					// TODO: may be unsafe and lead to infinite page locks
-					c.sharedLockTable.YieldLock(pruneKey)
-				}
-				pruneKey, pruneItem = c.prune()
+				c.index.Store(key, c.cache.PushFront(cacheItem))
+				return false
+			}()
+			if !mustContinue {
+				break
 			}
-			c.index.Store(key, c.cache.PushFront(cacheItem))
-		}()
+		}
 		return pruneKey, pruneItem
 	}
 }

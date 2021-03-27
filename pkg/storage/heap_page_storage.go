@@ -28,6 +28,9 @@ type HeapPageStorage struct {
 	// virtualSize is a size of storage in case of cache usage
 	// (when real file size and storage size may differ)
 	virtualSize int64
+	// writeLock used when position is unknown before WritePage call;
+	// allows to escape race conditions during write with position generation
+	writeLock sync.Mutex
 
 	// pageSize configures total heap page size (with headers, checksum and etc.)
 	pageSize int
@@ -150,6 +153,9 @@ func (s *HeapPageStorage) cachePutWithPrune(page *HeapPage, pos int64) {
 }
 
 func (s *HeapPageStorage) WritePage(page *HeapPage) int64 {
+	// TODO: improve position generation in all cases
+	s.writeLock.Lock()
+	defer s.writeLock.Unlock()
 	if s.fsm != nil {
 		pos := s.fsm.FindFirstFit(255)
 		if pos != -1 {
