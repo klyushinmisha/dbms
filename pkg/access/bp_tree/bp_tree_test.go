@@ -1041,7 +1041,10 @@ var keys = []string{
 func createDefaultStore(file *os.File) *storage.HeapPageStorage {
 	sharedLockTable := concurrency.NewLockTable()
 	indexCache := lru_cache.NewLRUCache(16, sharedLockTable)
-	return storage.NewHeapPageStorage(file, 8192, indexCache, sharedLockTable, nil)
+	return storage.NewHeapPageStorageBuilder(file, 8192).
+		UseLockTable(sharedLockTable).
+		UseCache(indexCache).
+		Build()
 }
 
 func TestBPTree_Insert(t *testing.T) {
@@ -1052,7 +1055,6 @@ func TestBPTree_Insert(t *testing.T) {
 		tree := NewBPTree(100, ba)
 		tree.Init()
 		for _, k := range keys {
-			log.Print(k)
 			tree.Insert(k, 0xABCD)
 		}
 		return nil

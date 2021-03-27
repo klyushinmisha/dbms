@@ -16,8 +16,11 @@ const pageSize = 8192
 func TestHeapPageStorage_WriteReadPage(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
 		sharedDataLockTable := concurrency.NewLockTable()
-		dataCache := lru_cache.NewLRUCache(16, sharedDataLockTable)
-		dataStorage := NewHeapPageStorage(dataFile, pageSize, dataCache, sharedDataLockTable, nil)
+		dataCache := lru_cache.NewLRUCache(64, sharedDataLockTable)
+		dataStorage := NewHeapPageStorageBuilder(dataFile, pageSize).
+			UseLockTable(sharedDataLockTable).
+			UseCache(dataCache).
+			Build()
 		defer dataStorage.Finalize()
 		page := AllocatePage(pageSize)
 		pos := dataStorage.WritePage(page)
@@ -34,7 +37,10 @@ func TestHeapPageStorage_ConcurrentWriteReadPage(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
 		sharedDataLockTable := concurrency.NewLockTable()
 		dataCache := lru_cache.NewLRUCache(64, sharedDataLockTable)
-		dataStorage := NewHeapPageStorage(dataFile, pageSize, dataCache, sharedDataLockTable, nil)
+		dataStorage := NewHeapPageStorageBuilder(dataFile, pageSize).
+			UseLockTable(sharedDataLockTable).
+			UseCache(dataCache).
+			Build()
 		defer dataStorage.Finalize()
 		var wg sync.WaitGroup
 		wg.Add(executors)

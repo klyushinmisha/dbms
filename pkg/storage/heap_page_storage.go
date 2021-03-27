@@ -9,6 +9,9 @@ import (
 	"sync"
 )
 
+// TODO: add HeapPageStorageBuilder (HeapPageStorage has a lot of deps)
+// to configure this way:
+// NewHeapPageStorageBuilder(file, pageSize).UseLockTable(sharedPageLockTable).UseCache(lruCache).UseFSM(fsm).Build()
 type HeapPageStorage struct {
 	// fileLock locks all disk operations to prevent race conditions
 	// during seeking/writing/reading
@@ -68,7 +71,9 @@ func (s *HeapPageStorage) Finalize() {
 	if s.cache != nil {
 		s.cache.PruneAll(func(pos int64, page interface{}) {
 			func() {
-				defer s.sharedPageLockTable.Unlock(pos)
+				if s.sharedPageLockTable != nil {
+					defer s.sharedPageLockTable.Unlock(pos)
+				}
 				s.writePageOnDisk(page.(*HeapPage), pos)
 			}()
 		})
@@ -109,8 +114,10 @@ func (s *HeapPageStorage) writePageOnDisk(page *HeapPage, pos int64) {
 }
 
 func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
-	s.sharedPageLockTable.YieldLock(pos)
-	defer s.sharedPageLockTable.Unlock(pos)
+	if s.sharedPageLockTable != nil {
+		s.sharedPageLockTable.YieldLock(pos)
+		defer s.sharedPageLockTable.Unlock(pos)
+	}
 	if s.cache != nil {
 		if page, found := s.cache.Get(pos); found {
 			return page.(*HeapPage)
@@ -124,8 +131,10 @@ func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
 }
 
 func (s *HeapPageStorage) WritePageAtPos(page *HeapPage, pos int64) {
-	s.sharedPageLockTable.YieldLock(pos)
-	defer s.sharedPageLockTable.Unlock(pos)
+	if s.sharedPageLockTable != nil {
+		s.sharedPageLockTable.YieldLock(pos)
+		defer s.sharedPageLockTable.Unlock(pos)
+	}
 	if s.cache != nil {
 		if pos >= s.virtualSize {
 			s.virtualSize = pos + int64(s.pageSize)
@@ -142,7 +151,9 @@ func (s *HeapPageStorage) cachePutWithPrune(page *HeapPage, pos int64) {
 	if prunedPos, prunedPage := s.cache.Put(pos, page); prunedPos != -1 {
 		// prevents premature release
 		if pos != prunedPos {
-			defer s.sharedPageLockTable.Unlock(prunedPos)
+			if s.sharedPageLockTable != nil {
+				defer s.sharedPageLockTable.Unlock(prunedPos)
+			}
 		}
 		s.writePageOnDisk(prunedPage.(*HeapPage), prunedPos)
 	}

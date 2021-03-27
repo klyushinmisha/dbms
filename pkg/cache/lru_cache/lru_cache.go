@@ -51,7 +51,6 @@ func (c *LRUCache) Put(key int64, item interface{}) (int64, interface{}) {
 		pruneItem := interface{}(nil)
 		for {
 			mustContinue := func() bool {
-				// deadlock: client locks pos, calls Put, but locked here and underlying code waits for page unlock
 				c.cacheMux.Lock()
 				defer c.cacheMux.Unlock()
 				if c.cache.Len() == c.cap {

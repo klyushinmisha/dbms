@@ -11,6 +11,14 @@ import (
 	"testing"
 )
 
+func createDefaultStorage(file *os.File, c *Config) *storage.HeapPageStorage {
+	sharedLockTable := concurrency.NewLockTable()
+	return storage.NewHeapPageStorageBuilder(file, c.PageSize).
+		UseLockTable(sharedLockTable).
+		UseCache(lru_cache.NewLRUCache(c.CacheSize, sharedLockTable)).
+		Build()
+}
+
 func TestExecutor_GetSet(t *testing.T) {
 	config := LoadConfig([]byte(`
 	{
@@ -21,13 +29,9 @@ func TestExecutor_GetSet(t *testing.T) {
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			sharedIndexLockTable := concurrency.NewLockTable()
-			sharedDataLockTable := concurrency.NewLockTable()
-			indexCache := lru_cache.NewLRUCache(config.CacheSize, sharedIndexLockTable)
-			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, sharedIndexLockTable, nil)
+			indexStorage := createDefaultStorage(indexFile, config)
 			defer indexStorage.Finalize()
-			dataCache := lru_cache.NewLRUCache(config.CacheSize, sharedDataLockTable)
-			dataStorage := storage.NewHeapPageStorage(dataFile, config.PageSize, dataCache, sharedDataLockTable, nil)
+			dataStorage := createDefaultStorage(dataFile, config)
 			defer dataStorage.Finalize()
 			e := InitExecutor(indexStorage, dataStorage)
 			e.Set("HELLO", []byte("WORLD"))
@@ -65,13 +69,9 @@ func TestExecutor_SetDelete(t *testing.T) {
 	`))
 	execErr := utils.FileScopedExec(config.DataPath(), func(dataFile *os.File) error {
 		return utils.FileScopedExec(config.IndexPath(), func(indexFile *os.File) error {
-			sharedIndexLockTable := concurrency.NewLockTable()
-			sharedDataLockTable := concurrency.NewLockTable()
-			indexCache := lru_cache.NewLRUCache(config.CacheSize, sharedIndexLockTable)
-			indexStorage := storage.NewHeapPageStorage(indexFile, config.PageSize, indexCache, sharedIndexLockTable, nil)
+			indexStorage := createDefaultStorage(indexFile, config)
 			defer indexStorage.Finalize()
-			dataCache := lru_cache.NewLRUCache(config.CacheSize, sharedDataLockTable)
-			dataStorage := storage.NewHeapPageStorage(dataFile, config.PageSize, dataCache, sharedDataLockTable, nil)
+			dataStorage := createDefaultStorage(dataFile, config)
 			defer dataStorage.Finalize()
 			e := InitExecutor(indexStorage, dataStorage)
 			e.Set("HELLO", []byte("WORLD"))
