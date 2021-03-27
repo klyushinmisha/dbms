@@ -310,9 +310,9 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 			if left != nil {
 				t.rebindParent(node, node.Left)
 				t.mergeInternalNodes(left, node)
-				t.rw.WriteNodeToStorage(node, pos)
 				t.rw.WriteNodeToStorage(left, node.Left)
 				t.unlinkNode(node)
+				t.rw.ReleaseNodeInStorage(pos)
 				if node.Parent == -1 {
 					return
 				}
@@ -322,9 +322,9 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 			} else if right != nil {
 				t.rebindParent(right, pos)
 				t.mergeInternalNodes(node, right)
-				t.rw.WriteNodeToStorage(right, node.Right)
 				t.rw.WriteNodeToStorage(node, pos)
 				t.unlinkNode(right)
+				t.rw.ReleaseNodeInStorage(node.Right)
 				if node.Parent == -1 {
 					return
 				}
@@ -333,8 +333,10 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 			} else {
 				// root deletion case
 				hdr := t.rw.ReadNodeFromStorage(0)
-				root := t.rw.ReadNodeFromStorage(hdr.Pointers[0])
+				rootPos := hdr.Pointers[0]
+				root := t.rw.ReadNodeFromStorage(rootPos)
 				if root.Size == 0 {
+					t.rw.ReleaseNodeInStorage(rootPos)
 					hdr.Pointers[0] = node.Pointers[0]
 					t.rw.WriteNodeToStorage(hdr, 0)
 					node = t.rw.ReadNodeFromStorage(hdr.Pointers[0])
@@ -386,17 +388,17 @@ func (t *BPTree) Delete(key string) error {
 	} else {
 		if left != nil {
 			t.mergeNodes(left, leaf)
-			t.rw.WriteNodeToStorage(leaf, pos)
 			t.rw.WriteNodeToStorage(left, leaf.Left)
 			t.unlinkNode(leaf)
 			t.updatePathToRoot(pos)
+			t.rw.ReleaseNodeInStorage(pos)
 			t.deleteInternal(leaf.Parent, leaf.Keys[0], left.Parent != leaf.Parent)
 		} else if right != nil {
 			t.mergeNodes(leaf, right)
-			t.rw.WriteNodeToStorage(right, leaf.Right)
 			t.rw.WriteNodeToStorage(leaf, pos)
 			t.unlinkNode(right)
 			t.updatePathToRoot(pos)
+			t.rw.ReleaseNodeInStorage(leaf.Right)
 			t.deleteInternal(leaf.Parent, right.Keys[0], false)
 		}
 	}

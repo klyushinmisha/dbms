@@ -34,6 +34,10 @@ func (ba *BPTreeAdapter) WriteNode(node *BPTreeNode) int64 {
 	return ba.storage.WritePage(page)
 }
 
+func (ba *BPTreeAdapter) ReleaseNode(pos int64) {
+	ba.storage.ReleaseNode(pos)
+}
+
 func (ba *BPTreeAdapter) Empty() bool {
 	return ba.storage.Empty()
 }

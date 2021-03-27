@@ -51,6 +51,11 @@ func (rw *bpTreeReaderWriter) AppendNodeToStorage(n *BPTreeNode) int64 {
 	return rw.ba.WriteNode(marshalToStoreNode(n))
 }
 
+// ReleaseNodeInStorage marks node as free to use it for other nodes
+func (rw *bpTreeReaderWriter) ReleaseNodeInStorage(pos int64) {
+	rw.ba.ReleaseNode(pos)
+}
+
 func (rw *bpTreeReaderWriter) Empty() bool {
 	return rw.ba.Empty()
 }

@@ -75,10 +75,6 @@ func (s *HeapPageStorage) Finalize() {
 	}
 }
 
-/*func (s *HeapPageStorage) effectiveFragmentSize() int {
-	return s.pageSize / 4
-}*/
-
 func (s *HeapPageStorage) readPageFromDisk(pos int64) *HeapPage {
 	s.fileLock.Lock()
 	defer s.fileLock.Unlock()
@@ -156,21 +152,24 @@ func (s *HeapPageStorage) WritePage(page *HeapPage) int64 {
 	// TODO: improve position generation in all cases
 	s.writeLock.Lock()
 	defer s.writeLock.Unlock()
-	if s.fsm != nil {
-		pos := s.fsm.FindFirstFit(255)
-		if pos != -1 {
-			s.WritePageAtPos(page, pos)
-		}
-		return pos
-	}
 	var pos int64
-	if s.cache != nil {
-		pos = s.virtualSize
+	if s.fsm != nil {
+		pos = s.fsm.FindFirstFit(255)
 	} else {
-		pos = s.getRealSize()
+		pos = s.findFirstFit(GetHeapPageCapacity(s.pageSize))
+	}
+	if pos == -1 {
+		pos = s.Size()
 	}
 	s.WritePageAtPos(page, pos)
 	return pos
+}
+
+func (s *HeapPageStorage) Size() int64 {
+	if s.cache != nil {
+		return s.virtualSize
+	}
+	return s.getRealSize()
 }
 
 func (s *HeapPageStorage) getRealSize() int64 {
@@ -179,4 +178,35 @@ func (s *HeapPageStorage) getRealSize() int64 {
 		log.Panicln(statErr)
 	}
 	return info.Size()
+}
+
+func (s *HeapPageStorage) ReleaseNode(pos int64) {
+	// TODO: add locking
+	if s.fsm != nil {
+		s.fsm.SetLevel(pos, FreePageLevel)
+	}
+	s.WritePageAtPos(AllocatePage(s.pageSize), pos)
+}
+
+func (s *HeapPageStorage) linearScan(exec func(page *HeapPage, pos int64)) {
+	pos := int64(0)
+	for {
+		nextPos := pos + int64(s.pageSize)
+		if nextPos >= s.Size() {
+			return
+		}
+		exec(s.ReadPageAtPos(pos), pos)
+		pos = nextPos
+	}
+}
+
+func (s *HeapPageStorage) findFirstFit(requiredSpace int) int64 {
+	fitPagePos := int64(-1)
+	s.linearScan(func(page *HeapPage, pos int64) {
+		if page.FreeSpace() >= requiredSpace {
+			fitPagePos = pos
+			return
+		}
+	})
+	return fitPagePos
 }

@@ -52,10 +52,14 @@ type HeapPage struct {
 	checksum uint32
 }
 
+func GetHeapPageCapacity(pageSize int) int {
+	return pageSize - heapPageHeaderSize - heapPageChecksumSize
+}
+
 func AllocatePage(pageSize int) *HeapPage {
 	var page HeapPage
 	page.records = 0
-	page.Data = make([]byte, pageSize-heapPageHeaderSize-heapPageChecksumSize)
+	page.Data = make([]byte, GetHeapPageCapacity(pageSize))
 	page.freeSpace = int32(len(page.Data))
 	return &page
 }

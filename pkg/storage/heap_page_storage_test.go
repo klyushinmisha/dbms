@@ -33,7 +33,7 @@ func TestHeapPageStorage_ConcurrentWriteReadPage(t *testing.T) {
 	executors := 32
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
 		sharedDataLockTable := concurrency.NewLockTable()
-		dataCache := lru_cache.NewLRUCache(16, sharedDataLockTable)
+		dataCache := lru_cache.NewLRUCache(64, sharedDataLockTable)
 		dataStorage := NewHeapPageStorage(dataFile, pageSize, dataCache, sharedDataLockTable, nil)
 		defer dataStorage.Finalize()
 		var wg sync.WaitGroup
@@ -42,6 +42,7 @@ func TestHeapPageStorage_ConcurrentWriteReadPage(t *testing.T) {
 			go func(randomStuff int) {
 				page := AllocatePage(pageSize)
 				page.Data[0] = byte(randomStuff)
+				page.freeSpace = 0
 				pos := dataStorage.WritePage(page)
 				assert.Equal(t, page, dataStorage.ReadPageAtPos(pos))
 				wg.Done()
@@ -54,6 +55,7 @@ func TestHeapPageStorage_ConcurrentWriteReadPage(t *testing.T) {
 				pos := int64(randomStuff * pageSize)
 				page := dataStorage.ReadPageAtPos(pos)
 				page.Data[0] = byte(randomStuff)
+				page.freeSpace = 0
 				dataStorage.WritePageAtPos(page, pos)
 				assert.Equal(t, page, dataStorage.ReadPageAtPos(pos))
 				wg.Done()
@@ -62,6 +64,7 @@ func TestHeapPageStorage_ConcurrentWriteReadPage(t *testing.T) {
 				pos := int64(randomStuff * pageSize)
 				page := dataStorage.ReadPageAtPos(pos)
 				page.Data[0] = byte(randomStuff)
+				page.freeSpace = 0
 				dataStorage.WritePageAtPos(page, pos)
 				assert.Equal(t, page, dataStorage.ReadPageAtPos(pos))
 				wg.Done()
