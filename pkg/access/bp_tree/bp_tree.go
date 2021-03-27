@@ -10,11 +10,12 @@ var (
 	ErrKeyNotFound = errors.New("provided key not found")
 )
 
-// TODO: make thread-safe
 type BPTree struct {
-	mux sync.RWMutex
-	t   int
-	rw  *bpTreeReaderWriter
+	delLock  sync.RWMutex
+	insLock  sync.Mutex
+	iterLock sync.RWMutex
+	t        int
+	rw       *bpTreeReaderWriter
 }
 
 func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
@@ -30,20 +31,23 @@ func (t *BPTree) findLeafPos(key string) int64 {
 	var pos = hdr.Pointers[0]
 	node = t.rw.ReadNodeFromStorage(pos)
 	for !node.Leaf {
-		for i := 0; i <= node.Size; i++ {
-			if i == node.Size || key < node.Keys[i] {
-				pos = node.Pointers[i]
-				node = t.rw.ReadNodeFromStorage(pos)
-				break
+		func() {
+			t.iterLock.RLock()
+			defer t.iterLock.RUnlock()
+			for i := 0; i <= node.Size; i++ {
+				if i == node.Size || key < node.Keys[i] {
+					pos = node.Pointers[i]
+					break
+				}
 			}
-		}
+		}()
 	}
 	return pos
 }
 
 func (t *BPTree) Find(key string) (int64, error) {
-	t.mux.RLock()
-	defer t.mux.RUnlock()
+	t.delLock.RLock()
+	defer t.delLock.RUnlock()
 	leaf := t.rw.ReadNodeFromStorage(t.findLeafPos(key))
 	pos := leaf.findKeyPos(key)
 	if pos == -1 {
@@ -59,81 +63,87 @@ func (t *BPTree) Find(key string) (int64, error) {
 func (t *BPTree) split(node *BPTreeNode, pos int64) {
 	hdr := t.rw.ReadNodeFromStorage(0)
 	for {
-		midKey := node.Keys[t.t]
-		midPtr := node.Pointers[t.t]
-		rightPos := node.Right
-		// generate new BPTreeNode address
-		newNode := createDefaultNode(t.t)
-		newNode.Parent = node.Parent
-		newNode.Left = pos
-		newNode.Right = rightPos
-		newNode.Size = t.t - 1
-		copy(newNode.Keys[:newNode.Size], node.Keys[t.t+1:])
-		if node.Leaf {
-			copy(newNode.Pointers[:newNode.Size], node.Pointers[t.t+1:])
-		} else {
-			copy(newNode.Pointers[:newNode.Size+1], node.Pointers[t.t+1:])
-		}
-		if node.Leaf {
-			newNode.Leaf = true
-			newNode.putKey(0, midKey, midPtr)
-		}
-		newPos := t.rw.AppendNodeToStorage(newNode)
-		if !node.Leaf {
-			t.rebindParent(newNode, newPos)
-		}
-		// update current BPTreeNode
-		node.Right = newPos
-		node.Size = t.t
-		t.rw.WriteNodeToStorage(node, pos)
-		// bind it to right neighbour
-		if rightPos != -1 {
-			rightNode := t.rw.ReadNodeFromStorage(rightPos)
-			rightNode.Left = newPos
-			t.rw.WriteNodeToStorage(rightNode, rightPos)
-		}
-		mustContinue := false
-		if pos == hdr.Pointers[0] {
-			// generate new address for current BPTreeNode and bind it to new BPTreeNode
-			// relies on fact that root BPTreeNode has no left neighbour, so rebinding required only for right one == new one
-			newRoot := createDefaultNode(t.t)
-			newRoot.Size = 1
-			newRoot.Keys[0] = midKey
-			newRoot.Pointers[0] = pos
-			newRoot.Pointers[1] = newPos
-			newRootPos := t.rw.AppendNodeToStorage(newRoot)
-			hdr.Pointers[0] = newRootPos
-			node.Parent = newRootPos
-			newNode.Parent = newRootPos
-			t.rw.WriteNodeToStorage(hdr, 0)
-			t.rw.WriteNodeToStorage(node, pos)
-			t.rw.WriteNodeToStorage(newNode, newPos)
-		} else {
-			pos = node.Parent
-			node = t.rw.ReadNodeFromStorage(pos)
-			p := 0
-			for ; p < node.Size && node.Keys[p] < midKey; p++ {
+		func() {
+			t.iterLock.Lock()
+			defer t.iterLock.Unlock()
+			midKey := node.Keys[t.t]
+			midPtr := node.Pointers[t.t]
+			rightPos := node.Right
+			// generate new BPTreeNode address
+			newNode := createDefaultNode(t.t)
+			newNode.Parent = node.Parent
+			newNode.Left = pos
+			newNode.Right = rightPos
+			newNode.Size = t.t - 1
+			copy(newNode.Keys[:newNode.Size], node.Keys[t.t+1:])
+			if node.Leaf {
+				copy(newNode.Pointers[:newNode.Size], node.Pointers[t.t+1:])
+			} else {
+				copy(newNode.Pointers[:newNode.Size+1], node.Pointers[t.t+1:])
 			}
-			// add midKey into BPTreeNode
-			copy(node.Keys[p+1:], node.Keys[p:])
-			copy(node.Pointers[p+2:], node.Pointers[p+1:])
-			node.Keys[p] = midKey
-			node.Pointers[p+1] = newPos
-			node.Size++
+			if node.Leaf {
+				newNode.Leaf = true
+				newNode.putKey(0, midKey, midPtr)
+			}
+			newPos := t.rw.AppendNodeToStorage(newNode)
+			if !node.Leaf {
+				t.rebindParent(newNode, newPos)
+			}
+			// update current BPTreeNode
+			node.Right = newPos
+			node.Size = t.t
 			t.rw.WriteNodeToStorage(node, pos)
-			// set the flag to run another iteration
-			mustContinue = node.Size == 2*t.t
-		}
-		// write previous root to a new location
-		if !mustContinue {
-			break
-		}
+			// bind it to right neighbour
+			if rightPos != -1 {
+				rightNode := t.rw.ReadNodeFromStorage(rightPos)
+				rightNode.Left = newPos
+				t.rw.WriteNodeToStorage(rightNode, rightPos)
+			}
+			mustContinue := false
+			if pos == hdr.Pointers[0] {
+				// generate new address for current BPTreeNode and bind it to new BPTreeNode
+				// relies on fact that root BPTreeNode has no left neighbour, so rebinding required only for right one == new one
+				newRoot := createDefaultNode(t.t)
+				newRoot.Size = 1
+				newRoot.Keys[0] = midKey
+				newRoot.Pointers[0] = pos
+				newRoot.Pointers[1] = newPos
+				newRootPos := t.rw.AppendNodeToStorage(newRoot)
+				hdr.Pointers[0] = newRootPos
+				node.Parent = newRootPos
+				newNode.Parent = newRootPos
+				t.rw.WriteNodeToStorage(hdr, 0)
+				t.rw.WriteNodeToStorage(node, pos)
+				t.rw.WriteNodeToStorage(newNode, newPos)
+			} else {
+				pos = node.Parent
+				node = t.rw.ReadNodeFromStorage(pos)
+				p := 0
+				for ; p < node.Size && node.Keys[p] < midKey; p++ {
+				}
+				// add midKey into BPTreeNode
+				copy(node.Keys[p+1:], node.Keys[p:])
+				copy(node.Pointers[p+2:], node.Pointers[p+1:])
+				node.Keys[p] = midKey
+				node.Pointers[p+1] = newPos
+				node.Size++
+				t.rw.WriteNodeToStorage(node, pos)
+				// set the flag to run another iteration
+				mustContinue = node.Size == 2*t.t
+			}
+			// write previous root to a new location
+			if !mustContinue {
+				break
+			}
+		}()
 	}
 }
 
 func (t *BPTree) Insert(key string, ptr int64) {
-	t.mux.Lock()
-	defer t.mux.Unlock()
+	t.delLock.RLock()
+	defer t.delLock.RUnlock()
+	t.insLock.Lock()
+	defer t.insLock.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	// find write position in leaf
@@ -350,8 +360,9 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 }
 
 func (t *BPTree) Delete(key string) error {
-	t.mux.Lock()
-	defer t.mux.Unlock()
+	// TODO: improve locking
+	t.delLock.Lock()
+	defer t.delLock.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	keyPos := leaf.findKeyPos(key)
