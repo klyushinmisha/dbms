@@ -27,8 +27,7 @@ func TestHeapPageStorage_IO(t *testing.T) {
 
 func TestHeapPageStorage_CachingIO(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
-		sharedDataLockTable := concurrency.NewLockTable()
-		dataCache := lru_cache.NewLRUCache(64, sharedDataLockTable)
+		dataCache := lru_cache.NewLRUCache(64, nil)
 		dataStorage := NewHeapPageStorageBuilder(dataFile, pageSize).
 			UseCache(dataCache).
 			Build()
