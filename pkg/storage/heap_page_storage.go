@@ -199,7 +199,7 @@ func (s *HeapPageStorage) getRealSize() int64 {
 func (s *HeapPageStorage) ReleaseNode(pos int64) {
 	// TODO: add locking
 	if s.fsm != nil {
-		s.fsm.SetLevel(pos, FreePageLevel)
+		s.fsm.SetLevel(pos, 255)
 	}
 	s.WritePageAtPos(AllocatePage(s.pageSize), pos)
 }
