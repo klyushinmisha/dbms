@@ -111,6 +111,11 @@ func (s *HeapPageStorage) writePageOnDisk(page *HeapPage, pos int64) {
 	if _, writeErr := s.file.Write(data); writeErr != nil {
 		log.Panic(writeErr)
 	}
+	// durability aspect;
+	// ensures all fs caches are flushed on disk
+	if syncErr := s.file.Sync(); syncErr != nil {
+		log.Panic(syncErr)
+	}
 }
 
 func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
