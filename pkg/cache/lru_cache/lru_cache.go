@@ -62,7 +62,6 @@ func (c *LRUCache) Put(key int64, item interface{}) (int64, interface{}) {
 					if pruneKey != key && c.sharedLockTable != nil {
 						// lock key before prune to prevent from race conditions;
 						// must be unlock by cache's client
-						// TODO: may be unsafe and lead to infinite page locks
 						if !c.sharedLockTable.TryLock(pruneKey) {
 							return true
 						}

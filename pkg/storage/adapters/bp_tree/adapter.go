@@ -15,12 +15,20 @@ func NewBPTreeAdapter(storage *storage.HeapPageStorage) *BPTreeAdapter {
 }
 
 func (ba *BPTreeAdapter) ReadNodeAtPos(pos int64) *BPTreeNode {
+	if ba.storage.LockTable() != nil {
+		ba.storage.LockTable().YieldLock(pos)
+		defer ba.storage.LockTable().Unlock(pos)
+	}
 	page := ba.storage.ReadPageAtPos(pos)
 	bpa := newBPTreePageAdapter(page)
 	return bpa.ReadNode()
 }
 
 func (ba *BPTreeAdapter) WriteNodeAtPos(node *BPTreeNode, pos int64) {
+	if ba.storage.LockTable() != nil {
+		ba.storage.LockTable().YieldLock(pos)
+		defer ba.storage.LockTable().Unlock(pos)
+	}
 	page := storage.AllocatePage(ba.storage.PageSize())
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
@@ -31,10 +39,18 @@ func (ba *BPTreeAdapter) WriteNode(node *BPTreeNode) int64 {
 	page := storage.AllocatePage(ba.storage.PageSize())
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
-	return ba.storage.WritePage(page)
+	pos := ba.storage.WritePage(page)
+	if ba.storage.LockTable() != nil {
+		defer ba.storage.LockTable().Unlock(pos)
+	}
+	return pos
 }
 
 func (ba *BPTreeAdapter) ReleaseNode(pos int64) {
+	if ba.storage.LockTable() != nil {
+		ba.storage.LockTable().YieldLock(pos)
+		defer ba.storage.LockTable().Unlock(pos)
+	}
 	ba.storage.ReleaseNode(pos)
 }
 

@@ -21,6 +21,10 @@ func NewDataAdapter(storage *storage.HeapPageStorage) *DataAdapter {
 }
 
 func (da *DataAdapter) FindAtPos(key string, pos int64) ([]byte, error) {
+	if da.storage.LockTable() != nil {
+		da.storage.LockTable().YieldLock(pos)
+		defer da.storage.LockTable().Unlock(pos)
+	}
 	page := da.storage.ReadPageAtPos(pos)
 	dpa := newDataPageAdapter(page)
 	rec, _ := dpa.FindRecordByKey([]byte(key))
@@ -30,7 +34,13 @@ func (da *DataAdapter) FindAtPos(key string, pos int64) ([]byte, error) {
 	return rec.Data, nil
 }
 
-func (da *DataAdapter) WriteAtPos(key string, data []byte, pos int64) error {
+func (da *DataAdapter) WriteAtPos(key string, data []byte, pos int64, lockPage bool) error {
+	if da.storage.LockTable() != nil {
+		if lockPage {
+			da.storage.LockTable().YieldLock(pos)
+			defer da.storage.LockTable().Unlock(pos)
+		}
+	}
 	page := da.storage.ReadPageAtPos(pos)
 	dpa := newDataPageAdapter(page)
 	if writeErr := dpa.WriteRecordByKey([]byte(key), data); writeErr != nil {
@@ -41,15 +51,36 @@ func (da *DataAdapter) WriteAtPos(key string, data []byte, pos int64) error {
 }
 
 func (da *DataAdapter) Write(key string, data []byte) (int64, error) {
-	page := storage.AllocatePage(da.storage.PageSize())
-	dpa := newDataPageAdapter(page)
-	if writeErr := dpa.WriteRecordByKey([]byte(key), data); writeErr != nil {
-		return -1, writeErr
+	var rec record
+	rec.Key = []byte(key)
+	rec.Data = data
+	pos := da.storage.FindFirstFit(2 * rec.Size())
+	if pos == -1 {
+		page := storage.AllocatePage(da.storage.PageSize())
+		dpa := newDataPageAdapter(page)
+		if writeErr := dpa.WriteRecordByKey([]byte(key), data); writeErr != nil {
+			return -1, writeErr
+		}
+		pos = da.storage.WritePage(page)
+		if da.storage.LockTable() != nil {
+			defer da.storage.LockTable().Unlock(pos)
+		}
+		return pos, nil
 	}
-	return da.storage.WritePage(page), nil
+	if da.storage.LockTable() != nil {
+		defer func() {
+			da.storage.LockTable().Unlock(pos)
+		}()
+	}
+	// TODO: lock here to prevent dirty writes
+	return pos, da.WriteAtPos(key, data, pos, false)
 }
 
 func (da *DataAdapter) DeleteAtPos(key string, pos int64) error {
+	if da.storage.LockTable() != nil {
+		da.storage.LockTable().YieldLock(pos)
+		defer da.storage.LockTable().Unlock(pos)
+	}
 	page := da.storage.ReadPageAtPos(pos)
 	dpa := newDataPageAdapter(page)
 	if found := dpa.DeleteRecordByKey([]byte(key)); !found {

@@ -40,14 +40,15 @@ type HeapPageStorage struct {
 }
 
 func (s *HeapPageStorage) Empty() bool {
-	if s.cache != nil {
-		return s.virtualSize == 0
-	}
-	return s.getRealSize() == 0
+	return s.Size() == 0
 }
 
 func (s *HeapPageStorage) PageSize() int {
 	return s.pageSize
+}
+
+func (s *HeapPageStorage) LockTable() *concurrency.LockTable {
+	return s.sharedPageLockTable
 }
 
 func NewHeapPageStorage(
@@ -119,10 +120,6 @@ func (s *HeapPageStorage) writePageOnDisk(page *HeapPage, pos int64) {
 }
 
 func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
-	if s.sharedPageLockTable != nil {
-		s.sharedPageLockTable.YieldLock(pos)
-		defer s.sharedPageLockTable.Unlock(pos)
-	}
 	if s.cache != nil {
 		if page, found := s.cache.Get(pos); found {
 			return page.(*HeapPage)
@@ -136,10 +133,6 @@ func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
 }
 
 func (s *HeapPageStorage) WritePageAtPos(page *HeapPage, pos int64) {
-	if s.sharedPageLockTable != nil {
-		s.sharedPageLockTable.YieldLock(pos)
-		defer s.sharedPageLockTable.Unlock(pos)
-	}
 	if s.cache != nil {
 		if pos >= s.virtualSize {
 			s.virtualSize = pos + int64(s.pageSize)
@@ -150,6 +143,7 @@ func (s *HeapPageStorage) WritePageAtPos(page *HeapPage, pos int64) {
 	}
 }
 
+// TODO: fix race condition
 func (s *HeapPageStorage) cachePutWithPrune(page *HeapPage, pos int64) {
 	// cache is expected to return locked position;
 	// unlock it after write
@@ -166,19 +160,31 @@ func (s *HeapPageStorage) cachePutWithPrune(page *HeapPage, pos int64) {
 
 func (s *HeapPageStorage) WritePage(page *HeapPage) int64 {
 	// TODO: improve position generation in all cases
-	s.writeLock.Lock()
-	defer s.writeLock.Unlock()
 	var pos int64
 	if s.fsm != nil {
 		pos = s.fsm.FindFirstFit(255)
 	} else {
-		pos = s.findFirstFit(GetHeapPageCapacity(s.pageSize))
+		pos = s.FindFirstFit(GetHeapPageCapacity(s.pageSize))
 	}
 	if pos == -1 {
-		pos = s.Size()
+		pos = s.lockEndPos()
 	}
 	s.WritePageAtPos(page, pos)
 	return pos
+}
+
+func (s *HeapPageStorage) lockEndPos() int64 {
+	s.writeLock.Lock()
+	defer s.writeLock.Unlock()
+	for {
+		pos := s.Size()
+		// remove active wait
+		if s.sharedPageLockTable != nil {
+			if s.sharedPageLockTable.TryLock(pos) {
+				return pos
+			}
+		}
+	}
 }
 
 func (s *HeapPageStorage) Size() int64 {
@@ -189,6 +195,8 @@ func (s *HeapPageStorage) Size() int64 {
 }
 
 func (s *HeapPageStorage) getRealSize() int64 {
+	s.fileLock.Lock()
+	defer s.fileLock.Unlock()
 	info, statErr := s.file.Stat()
 	if statErr != nil {
 		log.Panicln(statErr)
@@ -204,25 +212,35 @@ func (s *HeapPageStorage) ReleaseNode(pos int64) {
 	s.WritePageAtPos(AllocatePage(s.pageSize), pos)
 }
 
-func (s *HeapPageStorage) linearScan(exec func(page *HeapPage, pos int64)) {
+func (s *HeapPageStorage) linearScan(exec func(page *HeapPage, pos int64) bool) {
 	pos := int64(0)
 	for {
 		nextPos := pos + int64(s.pageSize)
 		if nextPos >= s.Size() {
 			return
 		}
-		exec(s.ReadPageAtPos(pos), pos)
+		// TODO: fix unsafe behaviour
+		if s.sharedPageLockTable != nil {
+			s.sharedPageLockTable.YieldLock(pos)
+		}
+		if !exec(s.ReadPageAtPos(pos), pos) {
+			return
+		}
+		if s.sharedPageLockTable != nil {
+			s.sharedPageLockTable.Unlock(pos)
+		}
 		pos = nextPos
 	}
 }
 
-func (s *HeapPageStorage) findFirstFit(requiredSpace int) int64 {
+func (s *HeapPageStorage) FindFirstFit(requiredSpace int) int64 {
 	fitPagePos := int64(-1)
-	s.linearScan(func(page *HeapPage, pos int64) {
+	s.linearScan(func(page *HeapPage, pos int64) bool {
 		if page.FreeSpace() >= requiredSpace {
 			fitPagePos = pos
-			return
+			return false
 		}
+		return true
 	})
 	return fitPagePos
 }
