@@ -180,7 +180,7 @@ func (s *HeapPageStorage) lockEndPos() int64 {
 		pos := s.Size()
 		// remove active wait
 		if s.sharedPageLockTable != nil {
-			if s.sharedPageLockTable.TryLock(pos) {
+			if s.sharedPageLockTable.TryLock(pos, concurrency.ExclusiveMode) {
 				return pos
 			}
 		}
@@ -221,7 +221,7 @@ func (s *HeapPageStorage) linearScan(exec func(page *HeapPage, pos int64) bool) 
 		}
 		// TODO: fix unsafe behaviour
 		if s.sharedPageLockTable != nil {
-			s.sharedPageLockTable.YieldLock(pos)
+			s.sharedPageLockTable.YieldLock(pos, concurrency.ExclusiveMode)
 		}
 		if !exec(s.ReadPageAtPos(pos), pos) {
 			return
