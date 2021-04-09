@@ -1,7 +1,7 @@
 package storage
 
+/*
 import (
-	"dbms/pkg/cache"
 	"dbms/pkg/concurrency"
 	"os"
 )
@@ -12,8 +12,6 @@ type HeapPageStorageBuilder struct {
 	pageSize int
 	// optional args
 	sharedPageLockTable *concurrency.LockTable
-	fsm                 *FSM
-	cache               cache.Cache
 }
 
 func NewHeapPageStorageBuilder(file *os.File, pageSize int) *HeapPageStorageBuilder {
@@ -28,16 +26,7 @@ func (b *HeapPageStorageBuilder) UseLockTable(t *concurrency.LockTable) *HeapPag
 	return b
 }
 
-func (b *HeapPageStorageBuilder) UseCache(c cache.Cache) *HeapPageStorageBuilder {
-	b.cache = c
-	return b
-}
-
-func (b *HeapPageStorageBuilder) UseFSM(fsm *FSM) *HeapPageStorageBuilder {
-	b.fsm = fsm
-	return b
-}
-
 func (b *HeapPageStorageBuilder) Build() *HeapPageStorage {
-	return NewHeapPageStorage(b.file, b.pageSize, b.cache, b.sharedPageLockTable, b.fsm)
+	return NewHeapPageStorage(b.file, b.pageSize, b.sharedPageLockTable)
 }
+*/

@@ -1,5 +1,6 @@
 package storage
 
+/*
 import (
 	"dbms/pkg/concurrency"
 	"io"
@@ -23,10 +24,10 @@ type HeapPageStorage struct {
 	// used for both HeapPageStorage and cache.Cache
 	sharedPageLockTable *concurrency.LockTable
 	// appendLock used when position is unknown before WritePage call;
-	// allows to escape race conditions during write with position generation
+	// allows to escape race conditions during writeNoLock with position generation
 	appendLock sync.Mutex
 
-	// pageSize configures total heap page size (with headers, checksum and etc.)
+	// pageSize configures total heap page sizeNoLock (with headers, checksum and etc.)
 	pageSize int
 }
 
@@ -51,8 +52,6 @@ func NewHeapPageStorage(
 }
 
 func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
-	s.fileLock.Lock()
-	defer s.fileLock.Unlock()
 	page := AllocatePage(s.pageSize)
 	pageData := make([]byte, s.pageSize)
 	if _, seekErr := s.file.Seek(pos, io.SeekStart); seekErr != nil {
@@ -68,12 +67,6 @@ func (s *HeapPageStorage) ReadPageAtPos(pos int64) *HeapPage {
 }
 
 func (s *HeapPageStorage) WritePageAtPos(page *HeapPage, pos int64) {
-	s.fileLock.Lock()
-	defer s.fileLock.Unlock()
-	_, seekErr := s.file.Seek(pos, io.SeekStart)
-	if seekErr != nil {
-		log.Panic(seekErr)
-	}
 	data, marshalErr := page.MarshalBinary()
 	if marshalErr != nil {
 		log.Panic(marshalErr)
@@ -102,16 +95,6 @@ func (s *HeapPageStorage) WritePage(page *HeapPage) int64 {
 	}
 	s.WritePageAtPos(page, pos)
 	return pos
-}
-
-func (s *HeapPageStorage) Size() int64 {
-	s.fileLock.Lock()
-	defer s.fileLock.Unlock()
-	info, statErr := s.file.Stat()
-	if statErr != nil {
-		log.Panicln(statErr)
-	}
-	return info.Size()
 }
 
 func (s *HeapPageStorage) ReleaseNode(pos int64) {
@@ -150,3 +133,4 @@ func (s *HeapPageStorage) FindFirstFit(requiredSpace int) int64 {
 	})
 	return fitPagePos
 }
+*/
