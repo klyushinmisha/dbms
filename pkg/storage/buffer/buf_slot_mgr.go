@@ -76,7 +76,7 @@ func (m *bufferHeaderManager) replaceAndElevateSlot(slotId int, pos int64) {
 		m.hdrs.Remove(e)
 	}
 	var hdr bufferHeader
-	hdr.desc = &bufferSlotDescriptor{pos, slotId}
+	hdr.desc = &bufferSlotDescriptor{pos, slotId, concurrency.NewLock()}
 	m.idx[slotId] = m.hdrs.PushFront(&hdr)
 }
 
@@ -94,12 +94,11 @@ func (m *bufferHeaderManager) elevateSlot(slotId int) {
 type bufferSlotDescriptor struct {
 	pos    int64
 	slotId int
+	lock   *concurrency.Lock
 }
 
 type bufferSlotManager struct {
-	bufHdrMgr *bufferHeaderManager
-	// TODO: make LWLock equivalent to lock each slot in-place, instead of heavy hash-table of locks
-	lockTable    *concurrency.LockTable
+	bufHdrMgr    *bufferHeaderManager
 	memPool      []byte
 	cap          int
 	slotSize     int
@@ -112,7 +111,6 @@ type bufferSlotManager struct {
 func newBufferSlotManager(storage *storage.StorageManager, slots int, slotSize int) *bufferSlotManager {
 	var m bufferSlotManager
 	m.bufHdrMgr = newBufferHeaderManager(slots)
-	m.lockTable = concurrency.NewLockTable()
 	m.memPool = make([]byte, slots*slotSize, slots*slotSize)
 	m.cap = slots
 	m.slotSize = slotSize
@@ -195,24 +193,21 @@ func (m *bufferSlotManager) Fetch(pos int64) {
 				continue
 			}
 			slotId = desc.slotId
-			if !m.lockTable.TryLock(slotId, concurrency.ExclusiveMode) {
+			if !desc.lock.TryLock(concurrency.ExclusiveMode) {
 				m.bufHdrMgr.unpin(slotId)
 				continue
 			}
 			break
 		}
-		defer m.lockTable.Unlock(slotId)
+		defer desc.lock.Unlock()
 		defer m.bufHdrMgr.unpin(slotId)
 		m.posToSlotMap.Delete(desc.pos)
-	} else {
-		m.lockTable.YieldLock(slotId, concurrency.ExclusiveMode)
-		defer m.lockTable.Unlock(slotId)
 	}
 	m.bufHdrMgr.replaceAndElevateSlot(slotId, pos)
 	// read block to slot
 	m.storage.ReadBlock(pos, m.getBlockBySlotId(slotId))
 	// slotId is has exclusive access here and is pinned
-	m.posToSlotMap.Store(pos, &bufferSlotDescriptor{pos, slotId})
+	m.posToSlotMap.Store(pos, &bufferSlotDescriptor{pos, slotId, concurrency.NewLock()})
 }
 
 func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
@@ -237,8 +232,8 @@ func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 	if marshalErr != nil {
 		log.Panic(marshalErr)
 	}
-	m.lockTable.YieldLock(desc.slotId, concurrency.ExclusiveMode)
-	defer m.lockTable.Unlock(desc.slotId)
+	desc.lock.YieldLock(concurrency.ExclusiveMode)
+	defer desc.lock.Unlock()
 	m.bufHdrMgr.getHdrBySlotId(desc.slotId).dirty = true
 	oldBlock := m.getBlockBySlotId(desc.slotId)
 	copy(oldBlock, newBlock)
@@ -249,8 +244,8 @@ func (m *bufferSlotManager) Flush(pos int64) {
 	if desc == nil {
 		log.Panicf("page not found %v", pos)
 	}
-	m.lockTable.YieldLock(desc.slotId, concurrency.SharedMode)
-	defer m.lockTable.Unlock(desc.slotId)
+	desc.lock.YieldLock(concurrency.SharedMode)
+	defer desc.lock.Unlock()
 	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); hdr.dirty {
 		m.storage.WriteBlock(pos, m.getBlockBySlotId(desc.slotId))
 		hdr.dirty = false

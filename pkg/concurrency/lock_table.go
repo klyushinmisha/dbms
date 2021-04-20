@@ -5,16 +5,6 @@ import (
 	"sync"
 )
 
-const (
-	SharedMode    = 0
-	ExclusiveMode = 1
-)
-
-var locksCompatMatrix = [][]bool{
-	{true, false},
-	{false, false},
-}
-
 type lockTableRecord struct {
 	mode      int
 	acquirers int
