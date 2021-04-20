@@ -33,9 +33,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 			for j := 0; j < threads; j++ {
 				go func(blockId int) {
 					pos := int64(blockId * 8192)
-					tab.YieldLock(pos, concurrency.ExclusiveMode)
 					buf.Fetch(pos)
-					tab.Unlock(pos)
 					// NOTE: item can be evicted
 					buf.Pin(pos)
 					tab.YieldLock(pos, concurrency.ExclusiveMode)
@@ -56,9 +54,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 			for j := 0; j < threads; j++ {
 				go func(blockId int) {
 					pos := int64(blockId * 8192)
-					tab.YieldLock(pos, concurrency.ExclusiveMode)
 					buf.Fetch(pos)
-					tab.Unlock(pos)
 					// NOTE: item can be evicted
 					buf.Pin(pos)
 					tab.YieldLock(pos, concurrency.SharedMode)

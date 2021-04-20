@@ -120,12 +120,15 @@ func newBufferSlotManager(storage *storage.StorageManager, slots int, slotSize i
 	return &m
 }
 
-func (m *bufferSlotManager) getDescFromPos(pos int64) *bufferSlotDescriptor {
-	e, found := m.posToSlotMap.Load(pos)
+func (m *bufferSlotManager) getDescFromPos(pos int64) (*bufferSlotDescriptor, bool) {
+	e, found := m.posToSlotMap.LoadOrStore(pos, nil)
 	if !found {
-		return nil
+		return nil, false
 	}
-	return e.(*bufferSlotDescriptor)
+	if e == nil {
+		return nil, true
+	}
+	return e.(*bufferSlotDescriptor), true
 }
 
 func (m *bufferSlotManager) getBlockBySlotId(slotId int) []byte {
@@ -135,7 +138,7 @@ func (m *bufferSlotManager) getBlockBySlotId(slotId int) []byte {
 }
 
 func (m *bufferSlotManager) Pin(pos int64) {
-	desc := m.getDescFromPos(pos)
+	desc := m.storeOrWaitDesc(pos)
 	if desc == nil {
 		log.Panicf("page not found %v", pos)
 	}
@@ -143,7 +146,7 @@ func (m *bufferSlotManager) Pin(pos int64) {
 }
 
 func (m *bufferSlotManager) Unpin(pos int64) {
-	desc := m.getDescFromPos(pos)
+	desc := m.storeOrWaitDesc(pos)
 	if desc == nil {
 		log.Panicf("page not found %v", pos)
 	}
@@ -163,11 +166,23 @@ func (m *bufferSlotManager) acquireSlotId() int {
 	}
 }
 
+func (m *bufferSlotManager) storeOrWaitDesc(pos int64) *bufferSlotDescriptor {
+	for {
+		// spinlock here; wait for pos to be fetched to slot
+		if desc, found := m.getDescFromPos(pos); found {
+			if desc != nil {
+				return desc
+			}
+		} else {
+			return nil
+		}
+	}
+}
+
 // TODO: make transaction-safe (pos lock is required at the moment)
 func (m *bufferSlotManager) Fetch(pos int64) {
-	if desc := m.getDescFromPos(pos); desc != nil {
-		// no lock exclusive lock here, because block in slot is not changed
-		m.bufHdrMgr.elevateSlot(desc.slotId)
+	desc := m.storeOrWaitDesc(pos)
+	if desc != nil {
 		return
 	}
 	slotId := m.acquireSlotId()
@@ -193,15 +208,15 @@ func (m *bufferSlotManager) Fetch(pos int64) {
 		m.lockTable.YieldLock(slotId, concurrency.ExclusiveMode)
 		defer m.lockTable.Unlock(slotId)
 	}
-	// slotId is has exclusive access here and is pinned
-	m.posToSlotMap.Store(pos, &bufferSlotDescriptor{pos, slotId})
 	m.bufHdrMgr.replaceAndElevateSlot(slotId, pos)
 	// read block to slot
 	m.storage.ReadBlock(pos, m.getBlockBySlotId(slotId))
+	// slotId is has exclusive access here and is pinned
+	m.posToSlotMap.Store(pos, &bufferSlotDescriptor{pos, slotId})
 }
 
 func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
-	desc := m.getDescFromPos(pos)
+	desc := m.storeOrWaitDesc(pos)
 	if desc == nil {
 		log.Panicf("page not found %v", pos)
 	}
@@ -214,7 +229,7 @@ func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
 }
 
 func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
-	desc := m.getDescFromPos(pos)
+	desc := m.storeOrWaitDesc(pos)
 	if desc == nil {
 		log.Panicf("page not found %v", pos)
 	}
@@ -230,7 +245,7 @@ func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 }
 
 func (m *bufferSlotManager) Flush(pos int64) {
-	desc := m.getDescFromPos(pos)
+	desc := m.storeOrWaitDesc(pos)
 	if desc == nil {
 		log.Panicf("page not found %v", pos)
 	}
