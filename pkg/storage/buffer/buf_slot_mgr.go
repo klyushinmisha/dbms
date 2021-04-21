@@ -118,17 +118,6 @@ func newBufferSlotManager(storage *storage.StorageManager, slots int, slotSize i
 	return &m
 }
 
-func (m *bufferSlotManager) getDescFromPos(pos int64) (*bufferSlotDescriptor, bool) {
-	e, found := m.posToSlotMap.LoadOrStore(pos, nil)
-	if !found {
-		return nil, false
-	}
-	if e == nil {
-		return nil, true
-	}
-	return e.(*bufferSlotDescriptor), true
-}
-
 func (m *bufferSlotManager) getBlockBySlotId(slotId int) []byte {
 	pageStart := slotId * m.slotSize
 	pageEnd := pageStart + m.slotSize
@@ -136,18 +125,12 @@ func (m *bufferSlotManager) getBlockBySlotId(slotId int) []byte {
 }
 
 func (m *bufferSlotManager) Pin(pos int64) {
-	desc := m.storeOrWaitDesc(pos)
-	if desc == nil {
-		log.Panicf("page not found %v", pos)
-	}
+	desc := m.waitNotNilDesc(pos)
 	m.bufHdrMgr.pin(desc.slotId)
 }
 
 func (m *bufferSlotManager) Unpin(pos int64) {
-	desc := m.storeOrWaitDesc(pos)
-	if desc == nil {
-		log.Panicf("page not found %v", pos)
-	}
+	desc := m.waitNotNilDesc(pos)
 	m.bufHdrMgr.unpin(desc.slotId)
 }
 func (m *bufferSlotManager) acquireSlotId() int {
@@ -167,14 +150,22 @@ func (m *bufferSlotManager) acquireSlotId() int {
 func (m *bufferSlotManager) storeOrWaitDesc(pos int64) *bufferSlotDescriptor {
 	for {
 		// spinlock here; wait for pos to be fetched to slot
-		if desc, found := m.getDescFromPos(pos); found {
-			if desc != nil {
-				return desc
+		if e, found := m.posToSlotMap.LoadOrStore(pos, nil); found {
+			if e != nil {
+				return e.(*bufferSlotDescriptor)
 			}
 		} else {
 			return nil
 		}
 	}
+}
+
+func (m *bufferSlotManager) waitNotNilDesc(pos int64) *bufferSlotDescriptor {
+	desc := m.storeOrWaitDesc(pos)
+	if desc == nil {
+		log.Panic("Nil descriptor unexpected")
+	}
+	return desc
 }
 
 // TODO: make transaction-safe (pos lock is required at the moment)
@@ -211,23 +202,17 @@ func (m *bufferSlotManager) Fetch(pos int64) {
 }
 
 func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
-	desc := m.storeOrWaitDesc(pos)
-	if desc == nil {
-		log.Panicf("page not found %v", pos)
-	}
+	desc := m.waitNotNilDesc(pos)
 	block := m.getBlockBySlotId(desc.slotId)
-	var page storage.HeapPage
+	page := new(storage.HeapPage)
 	if unmarshalErr := page.UnmarshalBinary(block); unmarshalErr != nil {
 		log.Panic(unmarshalErr)
 	}
-	return &page
+	return page
 }
 
 func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
-	desc := m.storeOrWaitDesc(pos)
-	if desc == nil {
-		log.Panicf("page not found %v", pos)
-	}
+	desc := m.waitNotNilDesc(pos)
 	newBlock, marshalErr := page.MarshalBinary()
 	if marshalErr != nil {
 		log.Panic(marshalErr)
@@ -240,10 +225,7 @@ func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 }
 
 func (m *bufferSlotManager) Flush(pos int64) {
-	desc := m.storeOrWaitDesc(pos)
-	if desc == nil {
-		log.Panicf("page not found %v", pos)
-	}
+	desc := m.waitNotNilDesc(pos)
 	desc.lock.YieldLock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); hdr.dirty {
