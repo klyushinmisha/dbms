@@ -16,16 +16,15 @@ var locksCompatMatrix = [][]bool{
 }
 
 type Lock struct {
-	mux           sync.Mutex
-	mode          int
-	refcount      int
-	updateCondMux sync.Mutex
-	updateCond    *sync.Cond
+	mux        sync.Mutex
+	mode       int
+	refcount   int
+	updateCond *sync.Cond
 }
 
 func NewLock() *Lock {
 	var l Lock
-	l.updateCond = sync.NewCond(&l.updateCondMux)
+	l.updateCond = sync.NewCond(&l.mux)
 	return &l
 }
 
@@ -47,21 +46,17 @@ func (l *Lock) TryLock(mode int) bool {
 func (l *Lock) YieldLock(mode int) {
 	for !l.TryLock(mode) {
 		// allow other goroutines to work if can't lock row
-		func() {
-			l.updateCondMux.Lock()
-			defer l.updateCondMux.Unlock()
-			l.updateCond.Wait()
-		}()
+		l.mux.Lock()
+		l.updateCond.Wait()
+		l.mux.Unlock()
 	}
 }
 
 func (l *Lock) Unlock() {
 	l.mux.Lock()
 	defer func() {
-		l.mux.Unlock()
-		l.updateCondMux.Lock()
-		defer l.updateCondMux.Unlock()
 		l.updateCond.Broadcast()
+		l.mux.Unlock()
 	}()
 	if l.refcount == 0 {
 		log.Panicf("Trying unlock unlocked lock")
