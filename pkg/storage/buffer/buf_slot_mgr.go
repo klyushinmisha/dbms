@@ -79,16 +79,22 @@ func (m *bufferSlotManager) Flush(pos int64) {
 
 func (m *bufferSlotManager) Pin(pos int64) {
 	desc := m.waitNotNilDesc(pos)
+	desc.lock.YieldLock(concurrency.SharedMode)
+	defer desc.lock.Unlock()
 	m.bufHdrMgr.pin(desc.slotId)
 }
 
 func (m *bufferSlotManager) Unpin(pos int64) {
 	desc := m.waitNotNilDesc(pos)
+	desc.lock.YieldLock(concurrency.SharedMode)
+	defer desc.lock.Unlock()
 	m.bufHdrMgr.unpin(desc.slotId)
 }
 
 func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
 	desc := m.waitNotNilDesc(pos)
+	desc.lock.YieldLock(concurrency.SharedMode)
+	defer desc.lock.Unlock()
 	block := m.getBlockBySlotId(desc.slotId)
 	page := new(storage.HeapPage)
 	if unmarshalErr := page.UnmarshalBinary(block); unmarshalErr != nil {
@@ -98,11 +104,11 @@ func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
 }
 
 func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
-	desc := m.waitNotNilDesc(pos)
 	newBlock, marshalErr := page.MarshalBinary()
 	if marshalErr != nil {
 		log.Panic(marshalErr)
 	}
+	desc := m.waitNotNilDesc(pos)
 	desc.lock.YieldLock(concurrency.ExclusiveMode)
 	defer desc.lock.Unlock()
 	m.bufHdrMgr.getHdrBySlotId(desc.slotId).dirty = true
