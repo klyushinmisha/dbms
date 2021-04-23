@@ -20,8 +20,9 @@ type bufferHeaderManager struct {
 	modLock sync.RWMutex
 	// use list here because cap is already passed (no need to use hash-table, because no grow expected and slot id
 	// directly points to node with no need in hash-function usage)
-	idx  []*list.Element
-	hdrs *list.List
+	idx      []*list.Element
+	hdrs     *list.List
+	freeList *list.List
 }
 
 func newBufferHeaderManager(slotsCap int) *bufferHeaderManager {
@@ -29,6 +30,10 @@ func newBufferHeaderManager(slotsCap int) *bufferHeaderManager {
 	m.cap = slotsCap
 	m.idx = make([]*list.Element, slotsCap, slotsCap)
 	m.hdrs = list.New()
+	m.freeList = list.New()
+	for slotId := 0; slotId < slotsCap; slotId++ {
+		m.freeList.PushFront(slotId)
+	}
 	return &m
 }
 
@@ -88,4 +93,27 @@ func (m *bufferHeaderManager) elevateSlot(slotId int) {
 	}
 	hdr := m.hdrs.Remove(e)
 	m.idx[slotId] = m.hdrs.PushFront(hdr)
+}
+
+func (m *bufferHeaderManager) allocateSlot() int {
+	m.modLock.Lock()
+	defer m.modLock.Unlock()
+	if m.freeList.Len() == 0 {
+		return -1
+	}
+	e := m.freeList.Front()
+	m.freeList.Remove(e)
+	return e.Value.(int)
+}
+
+func (m *bufferHeaderManager) deallocateSlot(slotId int) {
+	m.modLock.Lock()
+	defer m.modLock.Unlock()
+	e := m.idx[slotId]
+	if e == nil {
+		log.Panic("slot not found")
+	}
+	m.hdrs.Remove(e)
+	m.idx[slotId] = nil
+	m.freeList.PushFront(slotId)
 }

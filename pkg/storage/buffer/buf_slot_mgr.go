@@ -5,7 +5,6 @@ import (
 	"dbms/pkg/storage"
 	"log"
 	"sync"
-	"sync/atomic"
 )
 
 type bufferSlotDescriptor struct {
@@ -19,9 +18,7 @@ type bufferSlotManager struct {
 	memPool      []byte
 	cap          int
 	slotSize     int
-	activeSlots  int32
 	storage      *storage.StorageManager
-	pruneLock    sync.Mutex
 	posToSlotMap sync.Map
 }
 
@@ -40,7 +37,7 @@ func (m *bufferSlotManager) Fetch(pos int64) {
 	if desc := m.storeOrWaitDesc(pos); desc != nil {
 		return
 	}
-	slotId := m.acquireSlotId()
+	slotId := m.bufHdrMgr.allocateSlot()
 	if slotId == -1 {
 		var desc *bufferSlotDescriptor
 		for {
@@ -75,6 +72,14 @@ func (m *bufferSlotManager) Flush(pos int64) {
 		m.storage.WriteBlock(pos, m.getBlockBySlotId(desc.slotId))
 		hdr.dirty = false
 	}
+}
+
+func (m *bufferSlotManager) Deallocate(pos int64) {
+	desc := m.waitNotNilDesc(pos)
+	desc.lock.YieldLock(concurrency.ExclusiveMode)
+	defer desc.lock.Unlock()
+	m.bufHdrMgr.deallocateSlot(desc.slotId)
+	m.posToSlotMap.Delete(desc.pos)
 }
 
 func (m *bufferSlotManager) Pin(pos int64) {
@@ -120,20 +125,6 @@ func (m *bufferSlotManager) getBlockBySlotId(slotId int) []byte {
 	pageStart := slotId * m.slotSize
 	pageEnd := pageStart + m.slotSize
 	return m.memPool[pageStart:pageEnd]
-}
-
-func (m *bufferSlotManager) acquireSlotId() int {
-	// m.activeSlots can't be decreased, so try to acquire slot until achieve m.cap
-	for {
-		curSlotId := m.activeSlots
-		if int(curSlotId) == m.cap {
-			return -1
-		}
-		nextSlotId := curSlotId + 1
-		if atomic.CompareAndSwapInt32(&m.activeSlots, curSlotId, nextSlotId) {
-			return int(curSlotId)
-		}
-	}
 }
 
 func (m *bufferSlotManager) storeOrWaitDesc(pos int64) *bufferSlotDescriptor {
