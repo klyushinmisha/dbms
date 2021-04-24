@@ -1,36 +1,33 @@
 package pkg
 
 import (
-	"dbms/pkg/access"
 	"dbms/pkg/access/bp_tree"
-	"dbms/pkg/concurrency"
-	"dbms/pkg/storage"
 	bpAdapter "dbms/pkg/storage/adapters/bp_tree"
 	dataAdapter "dbms/pkg/storage/adapters/data"
+	"dbms/pkg/transaction"
 	"log"
 )
 
 type Executor struct {
-	index           access.Index
-	da              *dataAdapter.DataAdapter
-	recordLockTable *concurrency.LockTable
+	tx    *transaction.Transaction
+	index *bp_tree.BPTree
+	da    *dataAdapter.DataAdapter
 }
 
-func InitExecutor(
-	indexStorage *storage.HeapPageStorage,
-	dataStorage *storage.HeapPageStorage,
-) *Executor {
-	var e Executor
-	e.recordLockTable = concurrency.NewLockTable()
-	e.da = dataAdapter.NewDataAdapter(dataStorage)
-	e.index = bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(indexStorage))
+func NewExecutor(tx *transaction.Transaction) *Executor {
+	e := new(Executor)
+	e.tx = tx
+	e.index = bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(tx))
+	e.da = dataAdapter.NewDataAdapter(tx)
+	return e
+}
+
+func (e *Executor) Init() {
 	e.index.Init()
-	return &e
 }
 
 func (e *Executor) Get(key string) ([]byte, bool) {
-	e.recordLockTable.YieldLock(key)
-	defer e.recordLockTable.Unlock(key)
+	defer e.tx.DowngradeLocks()
 	pos, findErr := e.index.Find(key)
 	if findErr == bp_tree.ErrKeyNotFound {
 		return nil, false
@@ -46,12 +43,10 @@ func (e *Executor) Get(key string) ([]byte, bool) {
 }
 
 func (e *Executor) Set(key string, data []byte) {
-	// leads to deadlock
-	e.recordLockTable.YieldLock(key)
-	defer e.recordLockTable.Unlock(key)
+	defer e.tx.DowngradeLocks()
 	pos, findErr := e.index.Find(key)
 	if findErr == nil {
-		writeErr := e.da.WriteAtPos(key, data, pos, true)
+		writeErr := e.da.WriteAtPos(key, data, pos)
 		if writeErr == dataAdapter.ErrPageIsFull {
 			return
 		}
@@ -72,16 +67,15 @@ func (e *Executor) Set(key string, data []byte) {
 }
 
 func (e *Executor) Delete(key string) bool {
-	e.recordLockTable.YieldLock(key)
-	defer e.recordLockTable.Unlock(key)
+	defer e.tx.DowngradeLocks()
 	pos, findErr := e.index.Find(key)
 	if findErr == bp_tree.ErrKeyNotFound {
 		return false
 	}
-	if delErr := e.da.DeleteAtPos(key, pos); delErr == dataAdapter.ErrRecordNotFound {
+	if e.da.DeleteAtPos(key, pos) == dataAdapter.ErrRecordNotFound {
 		log.Panic("index and data page mismatch")
 	}
-	if delErr := e.index.Delete(key); delErr == bp_tree.ErrKeyNotFound {
+	if e.index.Delete(key) == bp_tree.ErrKeyNotFound {
 		log.Panic("index and data page mismatch")
 	}
 	return true

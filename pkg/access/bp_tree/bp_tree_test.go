@@ -1,10 +1,12 @@
 package bp_tree
 
 import (
-	"dbms/pkg/cache/lru_cache"
 	"dbms/pkg/concurrency"
+	"dbms/pkg/logging"
 	"dbms/pkg/storage"
 	"dbms/pkg/storage/adapters/bp_tree"
+	"dbms/pkg/storage/buffer"
+	"dbms/pkg/transaction"
 	"dbms/pkg/utils"
 	"log"
 	"os"
@@ -1038,26 +1040,39 @@ var keys = []string{
 	"QSWyjIdcEl",
 }
 
-func createDefaultStore(file *os.File) *storage.HeapPageStorage {
-	sharedLockTable := concurrency.NewLockTable()
-	indexCache := lru_cache.NewLRUCache(16, sharedLockTable)
-	return storage.NewHeapPageStorageBuilder(file, 8192).
-		UseLockTable(sharedLockTable).
-		UseCache(indexCache).
-		Build()
+const Page8K = 8192
+
+func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TransactionManager {
+	bufferCap := 1024
+	buf := buffer.NewBufferSlotManager(
+		storage.NewStorageManager(dataFile, Page8K),
+		bufferCap,
+		Page8K,
+	)
+	return transaction.NewTransactionManager(
+		0,
+		buf,
+		logging.NewLogManager(logFile, Page8K),
+		concurrency.NewLockTable(),
+	)
 }
 
 func TestBPTree_Insert(t *testing.T) {
-	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		store := createDefaultStore(file)
-		defer store.Finalize()
-		ba := bp_tree.NewBPTreeAdapter(store)
-		tree := NewBPTree(100, ba)
-		tree.Init()
-		for _, k := range keys {
-			tree.Insert(k, 0xABCD)
-		}
-		return nil
+	execErr := utils.FileScopedExec("data.bin", func(dataFile *os.File) error {
+		return utils.FileScopedExec("log.bin", func(logFile *os.File) error {
+			txMgr := createDefaultTxMgr(dataFile, logFile)
+			func() {
+				tx := txMgr.InitTx(concurrency.ExclusiveMode)
+				defer tx.Commit()
+				ba := bp_tree.NewBPTreeAdapter(tx)
+				tree := NewBPTree(100, ba)
+				tree.Init()
+				for _, k := range keys {
+					tree.Insert(k, 0xABCD)
+				}
+			}()
+			return nil
+		})
 	})
 	if execErr != nil {
 		log.Panic(execErr)
@@ -1065,26 +1080,31 @@ func TestBPTree_Insert(t *testing.T) {
 }
 
 func TestBPTree_Find(t *testing.T) {
-	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		store := createDefaultStore(file)
-		defer store.Finalize()
-		ba := bp_tree.NewBPTreeAdapter(store)
-		tree := NewBPTree(100, ba)
-		tree.Init()
-		for i, k := range keys {
-			tree.Insert(k, int64(0xABCD+i))
-			_, err := tree.Find(k)
-			if err != nil {
-				log.Panicf("Key %s not found\n", k)
-			}
-		}
-		for _, k := range keys {
-			_, err := tree.Find(k)
-			if err != nil {
-				log.Panicf("Key %s not found\n", k)
-			}
-		}
-		return nil
+	execErr := utils.FileScopedExec("data.bin", func(dataFile *os.File) error {
+		return utils.FileScopedExec("log.bin", func(logFile *os.File) error {
+			txMgr := createDefaultTxMgr(dataFile, logFile)
+			func() {
+				tx := txMgr.InitTx(concurrency.ExclusiveMode)
+				defer tx.Commit()
+				ba := bp_tree.NewBPTreeAdapter(tx)
+				tree := NewBPTree(100, ba)
+				tree.Init()
+				for i, k := range keys {
+					tree.Insert(k, int64(0xABCD+i))
+					_, err := tree.Find(k)
+					if err != nil {
+						log.Panicf("Key %s not found\n", k)
+					}
+				}
+				for _, k := range keys {
+					_, err := tree.Find(k)
+					if err != nil {
+						log.Panicf("Key %s not found\n", k)
+					}
+				}
+			}()
+			return nil
+		})
 	})
 	if execErr != nil {
 		log.Panic(execErr)
@@ -1092,23 +1112,28 @@ func TestBPTree_Find(t *testing.T) {
 }
 
 func TestBPTree_Find_Non_Existing(t *testing.T) {
-	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		store := createDefaultStore(file)
-		defer store.Finalize()
-		ba := bp_tree.NewBPTreeAdapter(store)
-		tree := NewBPTree(100, ba)
-		tree.Init()
-		for i, k := range keys {
-			tree.Insert(k, int64(0xABCD+i))
-		}
-		invalidKeys := []string{"Z", "H", "J", "W", "K"}
-		for _, k := range invalidKeys {
-			_, err := tree.Find(k)
-			if err != ErrKeyNotFound {
-				return err
-			}
-		}
-		return nil
+	execErr := utils.FileScopedExec("data.bin", func(dataFile *os.File) error {
+		return utils.FileScopedExec("log.bin", func(logFile *os.File) error {
+			txMgr := createDefaultTxMgr(dataFile, logFile)
+			return func() error {
+				tx := txMgr.InitTx(concurrency.ExclusiveMode)
+				defer tx.Commit()
+				ba := bp_tree.NewBPTreeAdapter(tx)
+				tree := NewBPTree(100, ba)
+				tree.Init()
+				for i, k := range keys {
+					tree.Insert(k, int64(0xABCD+i))
+				}
+				invalidKeys := []string{"Z", "H", "J", "W", "K"}
+				for _, k := range invalidKeys {
+					_, err := tree.Find(k)
+					if err != ErrKeyNotFound {
+						return err
+					}
+				}
+				return nil
+			}()
+		})
 	})
 	if execErr != nil {
 		log.Panic(execErr)
@@ -1116,42 +1141,47 @@ func TestBPTree_Find_Non_Existing(t *testing.T) {
 }
 
 func TestBPTree_Delete(t *testing.T) {
-	execErr := utils.FileScopedExec("somefile.bin", func(file *os.File) error {
-		store := createDefaultStore(file)
-		defer store.Finalize()
-		ba := bp_tree.NewBPTreeAdapter(store)
-		tree := NewBPTree(100, ba)
-		tree.Init()
-		keysToDelete := keys
-		for i, k := range keysToDelete {
-			tree.Insert(k, int64(0xABCD+i))
-		}
-		for _, k := range keysToDelete {
-			_, err := tree.Find(k)
-			if err != nil {
-				log.Panic(err)
-			}
-		}
-		for _, k := range keysToDelete {
-			err := tree.Delete(k)
-			if err != nil {
-				log.Panic(err)
-			}
-			_, err = tree.Find(k)
-			if err != ErrKeyNotFound {
-				log.Panicf("Found deleted key %s", k)
-			}
-			/*if i == len(keysToDelete)-1 {
-				break
-			}
-			for _, k2 := range keysToDelete[i+1:] {
-				_, err = tree.Find(k2)
-				if err != nil {
-					log.Panicf("Not found untouched key %s during %s delete", k2, k)
+	execErr := utils.FileScopedExec("data.bin", func(dataFile *os.File) error {
+		return utils.FileScopedExec("log.bin", func(logFile *os.File) error {
+			txMgr := createDefaultTxMgr(dataFile, logFile)
+			return func() error {
+				tx := txMgr.InitTx(concurrency.ExclusiveMode)
+				defer tx.Commit()
+				ba := bp_tree.NewBPTreeAdapter(tx)
+				tree := NewBPTree(100, ba)
+				tree.Init()
+				keysToDelete := keys
+				for i, k := range keysToDelete {
+					tree.Insert(k, int64(0xABCD+i))
 				}
-			}*/
-		}
-		return nil
+				for _, k := range keysToDelete {
+					_, err := tree.Find(k)
+					if err != nil {
+						log.Panic(err)
+					}
+				}
+				for _, k := range keysToDelete {
+					err := tree.Delete(k)
+					if err != nil {
+						log.Panic(err)
+					}
+					_, err = tree.Find(k)
+					if err != ErrKeyNotFound {
+						log.Panicf("Found deleted key %s", k)
+					}
+					/*if i == len(keysToDelete)-1 {
+						break
+					}
+					for _, k2 := range keysToDelete[i+1:] {
+						_, err = tree.Find(k2)
+						if err != nil {
+							log.Panicf("Not found untouched key %s during %s delete", k2, k)
+						}
+					}*/
+				}
+				return nil
+			}()
+		})
 	})
 	if execErr != nil {
 		log.Panic(execErr)

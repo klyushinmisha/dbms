@@ -16,7 +16,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 		strg_mgr := storage.NewStorageManager(dataFile, 8192)
 		tab := concurrency.NewLockTable()
 		bufferCap := 32
-		buf := newBufferSlotManager(strg_mgr, bufferCap, 8192)
+		buf := NewBufferSlotManager(strg_mgr, bufferCap, 8192)
 		// set keys equal to bufferCap to prevent cache pruning for fetched but not pinned pages
 		keys := bufferCap
 		threads := 16
@@ -80,7 +80,7 @@ func TestBuffer_FetchFlushDeallocate(t *testing.T) {
 		strg_mgr := storage.NewStorageManager(dataFile, 8192)
 		tab := concurrency.NewLockTable()
 		bufferCap := 32
-		buf := newBufferSlotManager(strg_mgr, bufferCap, 8192)
+		buf := NewBufferSlotManager(strg_mgr, bufferCap, 8192)
 		// set keys equal to bufferCap to prevent cache pruning for fetched but not pinned pages
 		keys := bufferCap
 		threads := 16

@@ -14,7 +14,8 @@ type StorageManager struct {
 	// file storage for heap pages
 	file *os.File
 	// pageSize configures total heap page size (with headers, checksum and etc.)
-	pageSize int
+	pageSize   int
+	emptyBlock []byte
 }
 
 func NewStorageManager(
@@ -24,6 +25,11 @@ func NewStorageManager(
 	var m StorageManager
 	m.file = file
 	m.pageSize = pageSize
+	block, err := AllocatePage(pageSize).MarshalBinary()
+	if err != nil {
+		log.Panic(err)
+	}
+	m.emptyBlock = block
 	return &m
 }
 
@@ -58,12 +64,20 @@ func (m *StorageManager) WriteBlock(pos int64, block []byte) {
 	m.writeNoLock(pos, block)
 }
 
-func (m *StorageManager) Extend(block []byte) int64 {
+func (m *StorageManager) Extend() int64 {
 	m.fileLock.Lock()
 	defer m.fileLock.Unlock()
 	pos := m.sizeNoLock()
-	m.writeNoLock(pos, block)
+	m.writeNoLock(pos, m.emptyBlock)
 	return pos
+}
+
+func (m *StorageManager) Flush() {
+	// durability aspect;
+	// ensures all fs caches are flushed on disk
+	if syncErr := m.file.Sync(); syncErr != nil {
+		log.Panic(syncErr)
+	}
 }
 
 func (m *StorageManager) writeNoLock(pos int64, block []byte) {
@@ -73,11 +87,6 @@ func (m *StorageManager) writeNoLock(pos int64, block []byte) {
 	}
 	if _, writeErr := m.file.Write(block); writeErr != nil {
 		log.Panic(writeErr)
-	}
-	// durability aspect;
-	// ensures all fs caches are flushed on disk
-	if syncErr := m.file.Sync(); syncErr != nil {
-		log.Panic(syncErr)
 	}
 }
 

@@ -2,58 +2,39 @@ package bp_tree
 
 import (
 	"dbms/pkg/storage"
+	"dbms/pkg/transaction"
 )
 
 type BPTreeAdapter struct {
-	storage *storage.HeapPageStorage
+	tx *transaction.Transaction
 }
 
-func NewBPTreeAdapter(storage *storage.HeapPageStorage) *BPTreeAdapter {
+func NewBPTreeAdapter(tx *transaction.Transaction) *BPTreeAdapter {
 	var ba BPTreeAdapter
-	ba.storage = storage
+	ba.tx = tx
 	return &ba
 }
 
 func (ba *BPTreeAdapter) ReadNodeAtPos(pos int64) *BPTreeNode {
-	if ba.storage.LockTable() != nil {
-		ba.storage.LockTable().YieldLock(pos)
-		defer ba.storage.LockTable().Unlock(pos)
-	}
-	page := ba.storage.ReadPageAtPos(pos)
+	page := ba.tx.ReadPageAtPos(pos)
 	bpa := newBPTreePageAdapter(page)
 	return bpa.ReadNode()
 }
 
 func (ba *BPTreeAdapter) WriteNodeAtPos(node *BPTreeNode, pos int64) {
-	if ba.storage.LockTable() != nil {
-		ba.storage.LockTable().YieldLock(pos)
-		defer ba.storage.LockTable().Unlock(pos)
-	}
-	page := storage.AllocatePage(ba.storage.PageSize())
+	page := storage.AllocatePage(ba.tx.StorageManager().PageSize())
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
-	ba.storage.WritePageAtPos(page, pos)
+	ba.tx.WritePageAtPos(page, pos)
 }
 
 func (ba *BPTreeAdapter) WriteNode(node *BPTreeNode) int64 {
-	page := storage.AllocatePage(ba.storage.PageSize())
+	page := storage.AllocatePage(ba.tx.StorageManager().PageSize())
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
-	pos := ba.storage.WritePage(page)
-	if ba.storage.LockTable() != nil {
-		defer ba.storage.LockTable().Unlock(pos)
-	}
-	return pos
-}
-
-func (ba *BPTreeAdapter) ReleaseNode(pos int64) {
-	if ba.storage.LockTable() != nil {
-		ba.storage.LockTable().YieldLock(pos)
-		defer ba.storage.LockTable().Unlock(pos)
-	}
-	ba.storage.ReleaseNode(pos)
+	return ba.tx.WritePage(page)
 }
 
 func (ba *BPTreeAdapter) Empty() bool {
-	return ba.storage.Empty()
+	return ba.tx.StorageManager().Empty()
 }

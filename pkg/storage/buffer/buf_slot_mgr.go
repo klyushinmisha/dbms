@@ -13,7 +13,7 @@ type bufferSlotDescriptor struct {
 	lock   *concurrency.Lock
 }
 
-type bufferSlotManager struct {
+type BufferSlotManager struct {
 	bufHdrMgr    *bufferHeaderManager
 	memPool      []byte
 	cap          int
@@ -22,8 +22,8 @@ type bufferSlotManager struct {
 	posToSlotMap sync.Map
 }
 
-func newBufferSlotManager(storage *storage.StorageManager, slots int, slotSize int) *bufferSlotManager {
-	var m bufferSlotManager
+func NewBufferSlotManager(storage *storage.StorageManager, slots int, slotSize int) *BufferSlotManager {
+	var m BufferSlotManager
 	m.bufHdrMgr = newBufferHeaderManager(slots)
 	m.memPool = make([]byte, slots*slotSize, slots*slotSize)
 	m.cap = slots
@@ -32,8 +32,12 @@ func newBufferSlotManager(storage *storage.StorageManager, slots int, slotSize i
 	return &m
 }
 
+func (m *BufferSlotManager) StorageManager() *storage.StorageManager {
+	return m.storage
+}
+
 // TODO: make transaction-safe (pos lock is required at the moment)
-func (m *bufferSlotManager) Fetch(pos int64) {
+func (m *BufferSlotManager) Fetch(pos int64) {
 	if desc := m.storeOrWaitDesc(pos); desc != nil {
 		return
 	}
@@ -64,7 +68,7 @@ func (m *bufferSlotManager) Fetch(pos int64) {
 	m.posToSlotMap.Store(pos, &bufferSlotDescriptor{pos, slotId, concurrency.NewLock()})
 }
 
-func (m *bufferSlotManager) Flush(pos int64) {
+func (m *BufferSlotManager) Flush(pos int64) {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.YieldLock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
@@ -74,29 +78,32 @@ func (m *bufferSlotManager) Flush(pos int64) {
 	}
 }
 
-func (m *bufferSlotManager) Deallocate(pos int64) {
+func (m *BufferSlotManager) Deallocate(pos int64) {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.YieldLock(concurrency.ExclusiveMode)
 	defer desc.lock.Unlock()
+	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); hdr.refcount != 0 {
+		return
+	}
 	m.bufHdrMgr.deallocateSlot(desc.slotId)
 	m.posToSlotMap.Delete(desc.pos)
 }
 
-func (m *bufferSlotManager) Pin(pos int64) {
+func (m *BufferSlotManager) Pin(pos int64) {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.YieldLock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	m.bufHdrMgr.pin(desc.slotId)
 }
 
-func (m *bufferSlotManager) Unpin(pos int64) {
+func (m *BufferSlotManager) Unpin(pos int64) {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.YieldLock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	m.bufHdrMgr.unpin(desc.slotId)
 }
 
-func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
+func (m *BufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.YieldLock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
@@ -108,7 +115,7 @@ func (m *bufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
 	return page
 }
 
-func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
+func (m *BufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 	newBlock, marshalErr := page.MarshalBinary()
 	if marshalErr != nil {
 		log.Panic(marshalErr)
@@ -121,13 +128,29 @@ func (m *bufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 	copy(oldBlock, newBlock)
 }
 
-func (m *bufferSlotManager) getBlockBySlotId(slotId int) []byte {
+// ReadPageAtPos modification; returns nil if page is not dirty (for logging purposes)
+func (m *BufferSlotManager) ReadPageIfDirty(pos int64) *storage.HeapPage {
+	desc := m.waitNotNilDesc(pos)
+	desc.lock.YieldLock(concurrency.SharedMode)
+	defer desc.lock.Unlock()
+	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); !hdr.dirty {
+		return nil
+	}
+	block := m.getBlockBySlotId(desc.slotId)
+	page := new(storage.HeapPage)
+	if unmarshalErr := page.UnmarshalBinary(block); unmarshalErr != nil {
+		log.Panic(unmarshalErr)
+	}
+	return page
+}
+
+func (m *BufferSlotManager) getBlockBySlotId(slotId int) []byte {
 	pageStart := slotId * m.slotSize
 	pageEnd := pageStart + m.slotSize
 	return m.memPool[pageStart:pageEnd]
 }
 
-func (m *bufferSlotManager) storeOrWaitDesc(pos int64) *bufferSlotDescriptor {
+func (m *BufferSlotManager) storeOrWaitDesc(pos int64) *bufferSlotDescriptor {
 	for {
 		// spinlock here; wait for pos to be fetched to slot
 		if e, found := m.posToSlotMap.LoadOrStore(pos, nil); found {
@@ -140,7 +163,7 @@ func (m *bufferSlotManager) storeOrWaitDesc(pos int64) *bufferSlotDescriptor {
 	}
 }
 
-func (m *bufferSlotManager) waitNotNilDesc(pos int64) *bufferSlotDescriptor {
+func (m *BufferSlotManager) waitNotNilDesc(pos int64) *bufferSlotDescriptor {
 	desc := m.storeOrWaitDesc(pos)
 	if desc == nil {
 		log.Panic("Nil descriptor unexpected")
