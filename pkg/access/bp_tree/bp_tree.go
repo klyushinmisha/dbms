@@ -10,14 +10,11 @@ var (
 	ErrKeyNotFound = errors.New("provided key not found")
 )
 
+// TODO: make thread-safe
 type BPTree struct {
-	// exclusiveLock allows exclusive deletes or concurrent inserts/reads
-	exclusiveLock sync.RWMutex
-	// levelLock resolves concurrency between inserts and reads;
-	// it locks tree per level operations;
-	levelLock sync.RWMutex
-	t         int
-	rw        *bpTreeReaderWriter
+	mux sync.RWMutex
+	t   int
+	rw  *bpTreeReaderWriter
 }
 
 func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
@@ -29,8 +26,6 @@ func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
 
 func (t *BPTree) findLeafPos(key string) int64 {
 	var node *BPTreeNode
-	t.levelLock.RLock()
-	defer t.levelLock.RUnlock()
 	hdr := t.rw.ReadNodeFromStorage(0)
 	var pos = hdr.Pointers[0]
 	node = t.rw.ReadNodeFromStorage(pos)
@@ -42,44 +37,28 @@ func (t *BPTree) findLeafPos(key string) int64 {
 				break
 			}
 		}
-		// if key is not present in current node (as expected before split iteration),
-		// then check right block if exists (value must be there);
-		if node.Right != -1 {
-			node = t.rw.ReadNodeFromStorage(node.Right)
-			for i := 0; i <= node.Size; i++ {
-				if i == node.Size || key < node.Keys[i] {
-					pos = node.Pointers[i]
-					node = t.rw.ReadNodeFromStorage(pos)
-					break
-				}
-			}
-		}
 	}
 	return pos
 }
 
 func (t *BPTree) Find(key string) (int64, error) {
-	t.exclusiveLock.RLock()
-	defer t.exclusiveLock.RUnlock()
-	pos := t.findLeafPos(key)
-	t.levelLock.RLock()
-	defer t.levelLock.RUnlock()
-	leaf := t.rw.ReadNodeFromStorage(pos)
-	keyPos := leaf.findKeyPos(key)
-	if keyPos == -1 {
+	t.mux.RLock()
+	defer t.mux.RUnlock()
+	leaf := t.rw.ReadNodeFromStorage(t.findLeafPos(key))
+	pos := leaf.findKeyPos(key)
+	if pos == -1 {
 		return 0, ErrKeyNotFound
 	}
-	return leaf.Pointers[keyPos], nil
+	return leaf.Pointers[pos], nil
 }
 
+// TODO: make lock-free
 // tree can be split in concurrent mode: no nodes deleted;
-// so per level lock is sufficient;
+// if key is not present in current node (as expected before split iteration), then check right block (it'll be there);
+// so Delete lock must be exclusive per interface method call, Find/Insert lock must be exclusive per iteration
 func (t *BPTree) split(node *BPTreeNode, pos int64) {
-	t.levelLock.Lock()
 	hdr := t.rw.ReadNodeFromStorage(0)
-	t.levelLock.Unlock()
 	for {
-		t.levelLock.Lock()
 		midKey := node.Keys[t.t]
 		midPtr := node.Pointers[t.t]
 		rightPos := node.Right
@@ -147,18 +126,15 @@ func (t *BPTree) split(node *BPTreeNode, pos int64) {
 		}
 		// write previous root to a new location
 		if !mustContinue {
-			t.levelLock.Unlock()
 			break
 		}
-		t.levelLock.Unlock()
 	}
 }
 
 func (t *BPTree) Insert(key string, ptr int64) {
-	t.exclusiveLock.RLock()
-	defer t.exclusiveLock.RUnlock()
+	t.mux.Lock()
+	defer t.mux.Unlock()
 	pos := t.findLeafPos(key)
-	t.levelLock.Lock()
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	// find write position in leaf
 	keyPos := 0
@@ -167,7 +143,6 @@ func (t *BPTree) Insert(key string, ptr int64) {
 			// check if key exists; only change addr value
 			leaf.Pointers[keyPos] = ptr
 			t.rw.WriteNodeToStorage(leaf, pos)
-			t.levelLock.Unlock()
 			return
 		} else if key < leaf.Keys[keyPos] {
 			break
@@ -175,7 +150,6 @@ func (t *BPTree) Insert(key string, ptr int64) {
 	}
 	leaf.putKey(keyPos, key, ptr)
 	t.rw.WriteNodeToStorage(leaf, pos)
-	t.levelLock.Unlock()
 	// balance t
 	if leaf.Size == 2*t.t {
 		t.split(leaf, pos)
@@ -183,8 +157,6 @@ func (t *BPTree) Insert(key string, ptr int64) {
 }
 
 func (t *BPTree) Init() {
-	t.exclusiveLock.Lock()
-	defer t.exclusiveLock.Unlock()
 	if t.rw.Empty() {
 		hdr := createDefaultNode(t.t)
 		t.rw.AppendNodeToStorage(hdr)
@@ -380,8 +352,8 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 }
 
 func (t *BPTree) Delete(key string) error {
-	t.exclusiveLock.Lock()
-	defer t.exclusiveLock.Unlock()
+	t.mux.Lock()
+	defer t.mux.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	keyPos := leaf.findKeyPos(key)
