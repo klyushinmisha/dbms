@@ -19,7 +19,7 @@ import (
 const Page8K = 8192
 
 func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TransactionManager {
-	bufferCap := 1024
+	bufferCap := 8192
 	buf := buffer.NewBufferSlotManager(
 		storage.NewStorageManager(dataFile, Page8K),
 		bufferCap,
@@ -108,29 +108,30 @@ func TestExecutor_ConcurrentSetGet(t *testing.T) {
 				e := NewExecutor(tx)
 				e.Init()
 			}()
-			keys := 16
-			threads := 16
+			keys := 1024
+			threads := 4
 			var wg sync.WaitGroup
-			wg.Add(keys * threads)
-			for i := 0; i < keys; i++ {
-				for j := 0; j < threads; j++ {
-					go func(randK string) {
-						tx := txMgr.InitTx(concurrency.SharedMode)
-						defer func() {
-							if err := recover(); err == concurrency.ErrTxLockTimeout {
-								tx.Abort()
-							}
-							defer wg.Done()
-						}()
-						e := NewExecutor(tx)
-						e.Set(randK, []byte(randK))
-						_, ok := e.Get(randK)
+			wg.Add(threads)
+			for j := 0; j < threads; j++ {
+				go func() {
+					tx := txMgr.InitTx(concurrency.SharedMode)
+					defer func() {
+						defer wg.Done()
+						if err := recover(); err == concurrency.ErrTxLockTimeout {
+							tx.Abort()
+						}
+					}()
+					e := NewExecutor(tx)
+					for i := 0; i < keys; i++ {
+						k := strconv.Itoa(i)
+						e.Set(k, []byte(k))
+						_, ok := e.Get(k)
 						if !ok {
 							log.Panic("value must present in database")
 						}
-						tx.Commit()
-					}(strconv.Itoa(i))
-				}
+					}
+					tx.Commit()
+				}()
 			}
 			wg.Wait()
 			return nil
@@ -151,53 +152,54 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 				e := NewExecutor(tx)
 				e.Init()
 			}()
-			keys := 16
-			threads := 16
-			totalTxs := keys * threads
+			keys := 1024
+			threads := 1
+			totalTxs := threads
 			deadTxs := int32(0)
 			var wg sync.WaitGroup
-			wg.Add(keys * threads)
-			for i := 0; i < keys; i++ {
-				for j := 0; j < threads; j++ {
-					go func(randK string) {
-						tx := txMgr.InitTx(concurrency.SharedMode)
-						defer func() {
-							if err := recover(); err == concurrency.ErrTxLockTimeout {
-								tx.Abort()
-								atomic.AddInt32(&deadTxs, 1)
-							}
-							defer wg.Done()
-						}()
-						e := NewExecutor(tx)
-						e.Set(randK, []byte(randK))
-						tx.Commit()
-					}(strconv.Itoa(i))
-				}
+			wg.Add(threads)
+			for j := 0; j < threads; j++ {
+				go func() {
+					tx := txMgr.InitTx(concurrency.SharedMode)
+					defer func() {
+						defer wg.Done()
+						if err := recover(); err == concurrency.ErrTxLockTimeout {
+							tx.Abort()
+							atomic.AddInt32(&deadTxs, 1)
+						}
+					}()
+					e := NewExecutor(tx)
+					for i := 0; i < keys; i++ {
+						e.Set(strconv.Itoa(i), []byte(strconv.Itoa(i)))
+					}
+					tx.Commit()
+				}()
 			}
 			wg.Wait()
 			log.Printf("Transactions:\n\ttotal: %v\n\tdead:  %v", totalTxs, deadTxs)
-			wg.Add(keys * threads)
+			wg.Add(threads)
 			deadTxs = 0
-			for i := 0; i < keys; i++ {
-				for j := 0; j < threads; j++ {
-					go func(randK string) {
-						tx := txMgr.InitTx(concurrency.SharedMode)
-						defer func() {
-							if err := recover(); err == concurrency.ErrTxLockTimeout {
-								tx.Abort()
-								atomic.AddInt32(&deadTxs, 1)
-							}
-							defer wg.Done()
-						}()
-						e := NewExecutor(tx)
-						e.Delete(randK)
-						_, found := e.Get(randK)
-						if found {
-							log.Panic("value must be deleted")
+			for j := 0; j < threads; j++ {
+				go func() {
+					tx := txMgr.InitTx(concurrency.SharedMode)
+					defer func() {
+						defer wg.Done()
+						if err := recover(); err == concurrency.ErrTxLockTimeout {
+							tx.Abort()
+							atomic.AddInt32(&deadTxs, 1)
 						}
-						tx.Commit()
-					}(strconv.Itoa(i))
-				}
+					}()
+					e := NewExecutor(tx)
+					for i := 0; i < keys; i++ {
+						k := strconv.Itoa(i)
+						e.Delete(k)
+						_, ok := e.Get(k)
+						if ok {
+							log.Panic("value must not present in database")
+						}
+					}
+					tx.Commit()
+				}()
 			}
 			wg.Wait()
 			log.Printf("Transactions:\n\ttotal: %v\n\tdead:  %v", totalTxs, deadTxs)

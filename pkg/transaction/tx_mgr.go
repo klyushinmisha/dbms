@@ -10,9 +10,17 @@ import (
 	"sync/atomic"
 )
 
+const (
+	processing = 0
+	committed  = 1
+	aborted    = 2
+)
+
+// Transaction is a single-thread ACID transaction
 type Transaction struct {
 	id       int
 	lockMode int
+	status   int
 	// lockedPages is a set of pages positions
 	lockedPages sync.Map
 	txMgr       *TransactionManager
@@ -54,6 +62,12 @@ func (m *TransactionManager) InitTxWithId(id int, lockMode int) *Transaction {
 	return tx
 }
 
+func (tx *Transaction) validateTxStatus() {
+	if tx.status != processing {
+		log.Panic("transaction processing finished")
+	}
+}
+
 func (tx *Transaction) fetchAndLockPage(pos int64) {
 	if _, found := tx.lockedPages.Load(pos); found {
 		tx.txMgr.sharedLockTable.UpgradeLock(pos, tx.id)
@@ -74,47 +88,26 @@ func (tx *Transaction) DowngradeLocks() {
 }
 
 func (tx *Transaction) ReadPageAtPos(pos int64) *storage.HeapPage {
+	tx.validateTxStatus()
 	tx.fetchAndLockPage(pos)
 	return tx.txMgr.bufSlotMgr.ReadPageAtPos(pos)
 }
 
-/*
-
-Exclusive (takes locks until commit/abort):
-BEGIN
-...lock...
-GET key
-SET key value
-...unlock...
-COMMIT/ABORT
-
-Shared (takes locks on operations but excludes Exclusive transactions):
-BEGIN
-...lock...
-GET key
-...unlock...
-...lock...
-SET key value
-...unlock...
-COMMIT/ABORT
-
-В расшаренном режиме апгрейдить блокировки на время выполнения операции.
-Когда операция завершена, понижать блокировку
-
-*/
-
 func (tx *Transaction) WritePageAtPos(page *storage.HeapPage, pos int64) {
+	tx.validateTxStatus()
 	tx.fetchAndLockPage(pos)
 	tx.txMgr.bufSlotMgr.WritePageAtPos(page, pos)
 }
 
 func (tx *Transaction) WritePage(page *storage.HeapPage) int64 {
+	tx.validateTxStatus()
 	pos := tx.txMgr.bufSlotMgr.StorageManager().Extend()
 	tx.WritePageAtPos(page, pos)
 	return pos
 }
 
 func (tx *Transaction) CommitNoLog() {
+	tx.validateTxStatus()
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.txMgr.bufSlotMgr.Flush(pos.(int64))
 		tx.txMgr.bufSlotMgr.Unpin(pos.(int64))
@@ -125,6 +118,7 @@ func (tx *Transaction) CommitNoLog() {
 }
 
 func (tx *Transaction) AbortNoLog() {
+	tx.validateTxStatus()
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.txMgr.bufSlotMgr.Flush(pos.(int64))
 		tx.txMgr.bufSlotMgr.Deallocate(pos.(int64))
@@ -134,6 +128,7 @@ func (tx *Transaction) AbortNoLog() {
 }
 
 func (tx *Transaction) Commit() {
+	tx.validateTxStatus()
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		if page := tx.txMgr.bufSlotMgr.ReadPageIfDirty(pos.(int64)); page != nil {
 			snapshot, err := page.MarshalBinary()
@@ -147,12 +142,15 @@ func (tx *Transaction) Commit() {
 	tx.txMgr.logMgr.LogCommit(tx.id)
 	tx.txMgr.logMgr.Flush()
 	tx.CommitNoLog()
+	tx.status = committed
 }
 
 func (tx *Transaction) Abort() {
+	tx.validateTxStatus()
 	tx.txMgr.logMgr.LogAbort(tx.id)
 	tx.txMgr.logMgr.Flush()
 	tx.AbortNoLog()
+	tx.status = aborted
 }
 
 func (tx *Transaction) StorageManager() *storage.StorageManager {

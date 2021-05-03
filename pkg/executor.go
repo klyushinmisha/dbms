@@ -31,13 +31,12 @@ func (e *Executor) Get(key string) ([]byte, bool) {
 	pos, findErr := e.index.Find(key)
 	if findErr == bp_tree.ErrKeyNotFound {
 		return nil, false
-	}
-	if findErr != nil {
+	} else if findErr != nil {
 		log.Panic(findErr)
 	}
 	data, findErr := e.da.FindAtPos(key, pos)
-	if findErr == dataAdapter.ErrRecordNotFound {
-		log.Panic("index and data page mismatch")
+	if findErr != nil {
+		log.Panic(findErr)
 	}
 	return data, true
 }
@@ -46,37 +45,28 @@ func (e *Executor) Set(key string, data []byte) {
 	defer e.tx.DowngradeLocks()
 	pos, findErr := e.index.Find(key)
 	if findErr == nil {
-		writeErr := e.da.WriteAtPos(key, data, pos)
-		if writeErr == dataAdapter.ErrPageIsFull {
-			return
+		if writeErr := e.da.WriteAtPos(key, data, pos); writeErr != nil {
+			log.Panic(writeErr)
 		}
+	} else if findErr == bp_tree.ErrKeyNotFound {
+		writePos, writeErr := e.da.Write(key, data)
 		if writeErr != nil {
 			log.Panic(writeErr)
 		}
-	} else if findErr != bp_tree.ErrKeyNotFound {
+		e.index.Insert(key, writePos)
+	} else {
 		log.Panic(findErr)
 	}
-	writePos, writeErr := e.da.Write(key, data)
-	if writeErr == dataAdapter.ErrPageIsFull {
-		log.Panic("can't fit value on free page")
-	}
-	if writeErr != nil {
-		log.Panicf("%v%v", key, data)
-	}
-	e.index.Insert(key, writePos)
 }
 
 func (e *Executor) Delete(key string) bool {
 	defer e.tx.DowngradeLocks()
-	pos, findErr := e.index.Find(key)
-	if findErr == bp_tree.ErrKeyNotFound {
+	pos, err := e.index.Delete(key)
+	if err == bp_tree.ErrKeyNotFound {
 		return false
 	}
-	if e.da.DeleteAtPos(key, pos) == dataAdapter.ErrRecordNotFound {
-		log.Panic("index and data page mismatch")
-	}
-	if e.index.Delete(key) == bp_tree.ErrKeyNotFound {
-		log.Panic("index and data page mismatch")
+	if delErr := e.da.DeleteAtPos(key, pos); delErr != nil {
+		log.Panic(delErr)
 	}
 	return true
 }

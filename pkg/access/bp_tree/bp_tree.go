@@ -170,7 +170,16 @@ func (t *BPTree) Init() {
 
 func (t *BPTree) shiftKeysLeft(left *BPTreeNode, right *BPTreeNode) {
 	left.Keys[left.Size] = right.Keys[0]
-	left.Pointers[left.Size+1] = right.Pointers[0]
+	left.Pointers[left.Size] = right.Pointers[0]
+	copy(right.Keys[:], right.Keys[1:])
+	copy(right.Pointers[:], right.Pointers[1:])
+	left.Size++
+	right.Size--
+}
+
+func (t *BPTree) shiftKeysLeftInternal(left *BPTreeNode, right *BPTreeNode) {
+	left.Keys[left.Size] = right.Keys[0]
+	left.Pointers[left.Size+1] = right.Pointers[1]
 	copy(right.Keys[:], right.Keys[1:])
 	copy(right.Pointers[:], right.Pointers[1:])
 	left.Size++
@@ -181,7 +190,16 @@ func (t *BPTree) shiftKeysRight(left *BPTreeNode, right *BPTreeNode) {
 	copy(right.Keys[1:], right.Keys[:])
 	copy(right.Pointers[1:], right.Pointers[:])
 	right.Keys[0] = left.Keys[left.Size-1]
-	right.Pointers[0] = left.Pointers[left.Size]
+	right.Pointers[0] = left.Pointers[left.Size-1]
+	left.Size--
+	right.Size++
+}
+
+func (t *BPTree) shiftKeysRightInternal(left *BPTreeNode, right *BPTreeNode) {
+	copy(right.Keys[1:], right.Keys[:])
+	copy(right.Pointers[1:], right.Pointers[:])
+	right.Keys[0] = left.Keys[left.Size-1]
+	right.Pointers[0] = left.Pointers[left.Size-2]
 	left.Size--
 	right.Size++
 }
@@ -286,7 +304,7 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 			right = t.rw.ReadNodeFromStorage(node.Right)
 		}
 		if left != nil && left.Size > t.t-1 {
-			t.shiftKeysRight(left, node)
+			t.shiftKeysRightInternal(left, node)
 			chld := t.rw.ReadNodeFromStorage(node.Pointers[0])
 			chld.Parent = pos
 			t.rw.WriteNodeToStorage(chld, node.Pointers[0])
@@ -297,7 +315,7 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 			t.updatePathToRoot(t.findMinLeaf(node.Left))
 			return
 		} else if right != nil && right.Size > t.t-1 {
-			t.shiftKeysLeft(node, right)
+			t.shiftKeysLeftInternal(node, right)
 			chld := t.rw.ReadNodeFromStorage(node.Pointers[node.Size])
 			chld.Parent = pos
 			t.rw.WriteNodeToStorage(chld, node.Pointers[node.Size])
@@ -351,20 +369,21 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 	}
 }
 
-func (t *BPTree) Delete(key string) error {
+func (t *BPTree) Delete(key string) (int64, error) {
 	t.mux.Lock()
 	defer t.mux.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	keyPos := leaf.findKeyPos(key)
 	if keyPos == -1 {
-		return ErrKeyNotFound
+		return -1, ErrKeyNotFound
 	}
+	delPtr := leaf.Pointers[keyPos]
 	leaf.popKey(keyPos)
 	t.rw.WriteNodeToStorage(leaf, pos)
 	t.updatePathToRoot(pos)
 	if leaf.Size >= t.t-1 {
-		return nil
+		return delPtr, nil
 	}
 	var left *BPTreeNode
 	var right *BPTreeNode
@@ -402,5 +421,5 @@ func (t *BPTree) Delete(key string) error {
 			t.deleteInternal(leaf.Parent, right.Keys[0], false)
 		}
 	}
-	return nil
+	return delPtr, nil
 }
