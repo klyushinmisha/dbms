@@ -153,7 +153,7 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 				e.Init()
 			}()
 			keys := 1024
-			threads := 1
+			threads := 4
 			totalTxs := threads
 			deadTxs := int32(0)
 			var wg sync.WaitGroup

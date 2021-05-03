@@ -10,11 +10,18 @@ var (
 	ErrKeyNotFound = errors.New("provided key not found")
 )
 
-// TODO: make thread-safe
+// locking inspired by Lehman and Yao whitepaper (Efficient Locking for Concurrent Operations on B-Trees)
 type BPTree struct {
-	mux sync.RWMutex
-	t   int
-	rw  *bpTreeReaderWriter
+	// deleteLock allows exclusive deletes or concurrent insert/reads;
+	// insertLock makes insert exclusive;
+	// this locking scheme guarantee:
+	//     1) delete locks other deletes, inserts, reads
+	//     2) insert locks other inserts
+	// so reads are nearly lock-free (except rare delete calls)
+	deleteLock sync.RWMutex
+	insertLock sync.Mutex
+	t          int
+	rw         *bpTreeReaderWriter
 }
 
 func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
@@ -29,6 +36,7 @@ func (t *BPTree) findLeafPos(key string) int64 {
 	hdr := t.rw.ReadNodeFromStorage(0)
 	var pos = hdr.Pointers[0]
 	node = t.rw.ReadNodeFromStorage(pos)
+	rightPos := node.Right
 	for !node.Leaf {
 		for i := 0; i <= node.Size; i++ {
 			if i == node.Size || key < node.Keys[i] {
@@ -37,19 +45,32 @@ func (t *BPTree) findLeafPos(key string) int64 {
 				break
 			}
 		}
+		// if key is not present in current node (as expected before split iteration),
+		// then check right block if exists (value must be there);
+		if rightPos != -1 {
+			node = t.rw.ReadNodeFromStorage(rightPos)
+			for i := 0; i <= node.Size; i++ {
+				if i == node.Size || key < node.Keys[i] {
+					pos = node.Pointers[i]
+					node = t.rw.ReadNodeFromStorage(pos)
+					break
+				}
+			}
+		}
 	}
 	return pos
 }
 
 func (t *BPTree) Find(key string) (int64, error) {
-	t.mux.RLock()
-	defer t.mux.RUnlock()
-	leaf := t.rw.ReadNodeFromStorage(t.findLeafPos(key))
-	pos := leaf.findKeyPos(key)
-	if pos == -1 {
+	t.deleteLock.RLock()
+	defer t.deleteLock.RUnlock()
+	pos := t.findLeafPos(key)
+	leaf := t.rw.ReadNodeFromStorage(pos)
+	keyPos := leaf.findKeyPos(key)
+	if keyPos == -1 {
 		return 0, ErrKeyNotFound
 	}
-	return leaf.Pointers[pos], nil
+	return leaf.Pointers[keyPos], nil
 }
 
 // TODO: make lock-free
@@ -132,8 +153,10 @@ func (t *BPTree) split(node *BPTreeNode, pos int64) {
 }
 
 func (t *BPTree) Insert(key string, ptr int64) {
-	t.mux.Lock()
-	defer t.mux.Unlock()
+	t.deleteLock.RLock()
+	defer t.deleteLock.RUnlock()
+	t.insertLock.Lock()
+	defer t.insertLock.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	// find write position in leaf
@@ -370,8 +393,8 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 }
 
 func (t *BPTree) Delete(key string) (int64, error) {
-	t.mux.Lock()
-	defer t.mux.Unlock()
+	t.deleteLock.Lock()
+	defer t.deleteLock.Unlock()
 	pos := t.findLeafPos(key)
 	leaf := t.rw.ReadNodeFromStorage(pos)
 	keyPos := leaf.findKeyPos(key)
