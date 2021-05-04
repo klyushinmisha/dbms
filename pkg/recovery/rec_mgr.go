@@ -17,6 +17,7 @@ type RecoveryManager struct {
 	logMgr *logging.LogManager
 }
 
+// simple recovery implementation; no log truncation made by design
 func NewRecoveryManager(logMgr *logging.LogManager) *RecoveryManager {
 	m := new(RecoveryManager)
 	m.logMgr = logMgr
