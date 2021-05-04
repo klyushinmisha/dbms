@@ -70,7 +70,7 @@ func (m *BufferSlotManager) Fetch(pos int64) {
 
 func (m *BufferSlotManager) Flush(pos int64) {
 	desc := m.waitNotNilDesc(pos)
-	desc.lock.YieldLock(concurrency.SharedMode)
+	desc.lock.Lock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); hdr.dirty {
 		m.storage.WriteBlock(pos, m.getBlockBySlotId(desc.slotId))
@@ -80,7 +80,7 @@ func (m *BufferSlotManager) Flush(pos int64) {
 
 func (m *BufferSlotManager) Deallocate(pos int64) {
 	desc := m.waitNotNilDesc(pos)
-	desc.lock.YieldLock(concurrency.ExclusiveMode)
+	desc.lock.Lock(concurrency.ExclusiveMode)
 	defer desc.lock.Unlock()
 	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); hdr.refcount != 0 {
 		return
@@ -91,21 +91,21 @@ func (m *BufferSlotManager) Deallocate(pos int64) {
 
 func (m *BufferSlotManager) Pin(pos int64) {
 	desc := m.waitNotNilDesc(pos)
-	desc.lock.YieldLock(concurrency.SharedMode)
+	desc.lock.Lock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	m.bufHdrMgr.pin(desc.slotId)
 }
 
 func (m *BufferSlotManager) Unpin(pos int64) {
 	desc := m.waitNotNilDesc(pos)
-	desc.lock.YieldLock(concurrency.SharedMode)
+	desc.lock.Lock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	m.bufHdrMgr.unpin(desc.slotId)
 }
 
 func (m *BufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
 	desc := m.waitNotNilDesc(pos)
-	desc.lock.YieldLock(concurrency.SharedMode)
+	desc.lock.Lock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	block := m.getBlockBySlotId(desc.slotId)
 	page := new(storage.HeapPage)
@@ -121,7 +121,7 @@ func (m *BufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 		log.Panic(marshalErr)
 	}
 	desc := m.waitNotNilDesc(pos)
-	desc.lock.YieldLock(concurrency.ExclusiveMode)
+	desc.lock.Lock(concurrency.ExclusiveMode)
 	defer desc.lock.Unlock()
 	m.bufHdrMgr.getHdrBySlotId(desc.slotId).dirty = true
 	oldBlock := m.getBlockBySlotId(desc.slotId)
@@ -131,7 +131,7 @@ func (m *BufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 // ReadPageAtPos modification; returns nil if page is not dirty (for logging purposes)
 func (m *BufferSlotManager) ReadPageIfDirty(pos int64) *storage.HeapPage {
 	desc := m.waitNotNilDesc(pos)
-	desc.lock.YieldLock(concurrency.SharedMode)
+	desc.lock.Lock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); !hdr.dirty {
 		return nil

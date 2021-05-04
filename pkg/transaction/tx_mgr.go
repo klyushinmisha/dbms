@@ -75,7 +75,7 @@ func (tx *Transaction) fetchAndLockPage(pos int64) {
 	}
 	tx.txMgr.bufSlotMgr.Fetch(pos)
 	tx.txMgr.bufSlotMgr.Pin(pos)
-	tx.txMgr.sharedLockTable.YieldLock(pos, tx.lockMode)
+	tx.txMgr.sharedLockTable.Lock(pos, tx.lockMode)
 	tx.txMgr.sharedLockTable.UpgradeLock(pos, tx.id)
 	tx.lockedPages.Store(pos, struct{}{})
 }

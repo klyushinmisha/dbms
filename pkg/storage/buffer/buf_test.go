@@ -36,7 +36,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 					buf.Fetch(pos)
 					// NOTE: item can be evicted
 					buf.Pin(pos)
-					tab.YieldLock(pos, concurrency.ExclusiveMode)
+					tab.Lock(pos, concurrency.ExclusiveMode)
 					page := buf.ReadPageAtPos(pos)
 					page.DeleteData(0)
 					page.AppendData([]byte{byte(blockId + 1)})
@@ -57,7 +57,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 					buf.Fetch(pos)
 					// NOTE: item can be evicted
 					buf.Pin(pos)
-					tab.YieldLock(pos, concurrency.SharedMode)
+					tab.Lock(pos, concurrency.SharedMode)
 					page := buf.ReadPageAtPos(pos)
 					assert.Equal(t, page.ReadData(0)[0], byte(blockId+1))
 					tab.Unlock(pos)
@@ -97,7 +97,7 @@ func TestBuffer_FetchFlushDeallocate(t *testing.T) {
 			for j := 0; j < threads; j++ {
 				go func(blockId int) {
 					pos := int64(blockId * 8192)
-					tab.YieldLock(pos, concurrency.ExclusiveMode)
+					tab.Lock(pos, concurrency.ExclusiveMode)
 					buf.Fetch(pos)
 					// NOTE: item can be evicted
 					buf.Pin(pos)

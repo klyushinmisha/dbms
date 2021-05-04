@@ -5,18 +5,6 @@ import (
 	"sync"
 )
 
-const (
-	SharedMode    = 0
-	ExclusiveMode = 1
-	UpdateMode    = 2
-)
-
-var locksCompatMatrix = [][]bool{
-	{true, false, true},
-	{false, false, false},
-	{true, false, false},
-}
-
 type Lock struct {
 	mux           sync.Mutex
 	mode          int
@@ -46,7 +34,7 @@ func (l *Lock) TryLock(mode int) bool {
 	return true
 }
 
-func (l *Lock) YieldLock(mode int) {
+func (l *Lock) Lock(mode int) {
 	l.updateCondMux.Lock()
 	defer l.updateCondMux.Unlock()
 	for !l.TryLock(mode) {

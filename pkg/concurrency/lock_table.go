@@ -1,15 +1,10 @@
 package concurrency
 
 import (
-	"errors"
 	"log"
 	"sync"
 	"time"
 )
-
-const lockTimeout = 10 * time.Second
-
-var ErrTxLockTimeout = errors.New("page lock timeout")
 
 type lockTableRecord struct {
 	mode       int
@@ -48,7 +43,7 @@ func (t *LockTable) TryLock(key interface{}, mode int) bool {
 	return true
 }
 
-func (t *LockTable) YieldLock(key interface{}, mode int) {
+func (t *LockTable) Lock(key interface{}, mode int) {
 	start := time.Now()
 	for !t.TryLock(key, mode) {
 		if time.Now().Sub(start) > lockTimeout {
