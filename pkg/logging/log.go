@@ -24,10 +24,18 @@ const commitAbortRecSize = 9
 // so only roll forward pages snapshots until stable storage is in required state
 type LogRecord struct {
 	recType uint8
-	tx      int64
+	txId    int64
 	// snapshot specific fields
-	pos          int64
-	snapshotData []byte
+	Pos      int64
+	Snapshot []byte
+}
+
+func (r *LogRecord) TxId() int {
+	return int(r.txId)
+}
+
+func (r *LogRecord) Type() int {
+	return int(r.recType)
 }
 
 func (r *LogRecord) MarshalBinary() ([]byte, error) {
@@ -35,30 +43,30 @@ func (r *LogRecord) MarshalBinary() ([]byte, error) {
 	if writeErr := binary.Write(buf, binary.LittleEndian, r.recType); writeErr != nil {
 		return nil, writeErr
 	}
-	if writeErr := binary.Write(buf, binary.LittleEndian, r.tx); writeErr != nil {
+	if writeErr := binary.Write(buf, binary.LittleEndian, r.txId); writeErr != nil {
 		return nil, writeErr
 	}
-	if r.recType != update {
+	if r.recType != UpdateRecord {
 		return buf.Bytes(), nil
 	}
 	// log snapshot specific fields
-	if writeErr := binary.Write(buf, binary.LittleEndian, r.pos); writeErr != nil {
+	if writeErr := binary.Write(buf, binary.LittleEndian, r.Pos); writeErr != nil {
 		return nil, writeErr
 	}
-	if _, writeErr := buf.Write(r.snapshotData); writeErr != nil {
+	if _, writeErr := buf.Write(r.Snapshot); writeErr != nil {
 		return nil, writeErr
 	}
 	return buf.Bytes(), nil
 }
 
-// TODO: add 'flushed' records; skip tx processing if already flushed
+// TODO: add 'flushed' records; skip txId processing if already flushed
 // 1. roll forward to get flushed transactions
 // 2. roll forward again skipping flushed transactions and processing
 //    unflushed transactions
 const (
-	update = uint8(0)
-	commit = uint8(1)
-	abort  = uint8(2)
+	UpdateRecord = 0
+	CommitRecord = 1
+	AbortRecord  = 2
 )
 
 type LogManager struct {
@@ -89,26 +97,26 @@ func (m *LogManager) log(r *LogRecord) {
 	}
 }
 
-func (m *LogManager) LogSnapshot(tx int, pos int64, snapshotData []byte) {
+func (m *LogManager) LogSnapshot(txId int, pos int64, snapshotData []byte) {
 	rec := new(LogRecord)
-	rec.recType = update
-	rec.tx = int64(tx)
-	rec.pos = int64(pos)
-	rec.snapshotData = snapshotData
+	rec.recType = UpdateRecord
+	rec.txId = int64(txId)
+	rec.Pos = pos
+	rec.Snapshot = snapshotData
 	m.log(rec)
 }
 
-func (m *LogManager) LogCommit(tx int) {
+func (m *LogManager) LogCommit(txId int) {
 	rec := new(LogRecord)
-	rec.recType = commit
-	rec.tx = int64(tx)
+	rec.recType = CommitRecord
+	rec.txId = int64(txId)
 	m.log(rec)
 }
 
-func (m *LogManager) LogAbort(tx int) {
+func (m *LogManager) LogAbort(txId int) {
 	rec := new(LogRecord)
-	rec.recType = abort
-	rec.tx = int64(tx)
+	rec.recType = AbortRecord
+	rec.txId = int64(txId)
 	m.log(rec)
 }
 
@@ -149,18 +157,18 @@ func (m *LogManager) read() *LogRecord {
 		}
 		log.Panic(readErr)
 	}
-	if readErr := binary.Read(m.file, binary.LittleEndian, &r.tx); readErr != nil {
+	if readErr := binary.Read(m.file, binary.LittleEndian, &r.txId); readErr != nil {
 		log.Panic(readErr)
 	}
-	if r.recType != update {
+	if r.recType != UpdateRecord {
 		return r
 	}
 	// extract snapshot specific fields
-	if readErr := binary.Read(m.file, binary.LittleEndian, &r.pos); readErr != nil {
+	if readErr := binary.Read(m.file, binary.LittleEndian, &r.Pos); readErr != nil {
 		log.Panic(readErr)
 	}
-	r.snapshotData = make([]byte, m.pageSize, m.pageSize)
-	if _, err := m.file.Read(r.snapshotData); err != nil {
+	r.Snapshot = make([]byte, m.pageSize, m.pageSize)
+	if _, err := m.file.Read(r.Snapshot); err != nil {
 		log.Panic(err)
 	}
 	return r

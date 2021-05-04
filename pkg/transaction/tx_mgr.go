@@ -26,6 +26,10 @@ type Transaction struct {
 	txMgr       *TransactionManager
 }
 
+func (t *Transaction) Id() int {
+	return t.id
+}
+
 type TransactionManager struct {
 	idCounter       int64
 	bufSlotMgr      *buffer.BufferSlotManager

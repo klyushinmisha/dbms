@@ -23,12 +23,12 @@ func TestLogManager_Log(t *testing.T) {
 		logsIter := logMgr.Iterator()
 		for i := 0; i < keys; i++ {
 			r := logsIter()
-			assert.Equal(t, r.recType, update)
-			assert.Equal(t, r.tx, int64(i))
-			assert.Equal(t, r.snapshotData[0], byte(i))
+			assert.Equal(t, r.Type(), UpdateRecord)
+			assert.Equal(t, r.TxId(), i)
+			assert.Equal(t, r.Snapshot[0], byte(i))
 			r = logsIter()
-			assert.Equal(t, r.recType, commit)
-			assert.Equal(t, r.tx, int64(i))
+			assert.Equal(t, r.Type(), CommitRecord)
+			assert.Equal(t, r.TxId(), i)
 		}
 		return nil
 	})

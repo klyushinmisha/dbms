@@ -1,16 +1,11 @@
 package recovery
 
 import (
-	"bytes"
 	"dbms/pkg/concurrency"
 	"dbms/pkg/logging"
-	"dbms/pkg/storage/buffer"
+	"dbms/pkg/storage"
 	"dbms/pkg/transaction"
-	"encoding/binary"
-	"io"
 	"log"
-	"os"
-	"sync"
 )
 
 type RecoveryManager struct {
@@ -25,28 +20,36 @@ func NewRecoveryManager(logMgr *logging.LogManager) *RecoveryManager {
 
 func (m *RecoveryManager) RollForward(txMgr *transaction.TransactionManager) {
 	var idCounter int64
-	txs := make(map[int]*Transaction)
+	txs := make(map[int]*transaction.Transaction)
 	logsIter := m.logMgr.Iterator()
-	for r := logsIter(); r != nil; r = logsIter() {
-		if r.txId > idCounter {
-			idCounter = r.txId
-		}
-		var tx *Transaction
-		if tx, found := txs[r.txId]; !found {
-			// use ExclusiveMode here, because transactions not modifing storage
-			// won't lock any page;
-			// so no deadlocks will appear during RollForward() call
-			tx := txMgr.InitTxWithId(r.txId, concurrency.ExclusiveMode)
-		}
-		switch r.recType {
-		case snapshot:
-			tx.WritePageAtPos(r.snapshot, r.pos)
+	for {
+		r := logsIter()
+		if r == nil {
 			break
-		case commit:
+		}
+		if r.TxId() > int(idCounter) {
+			idCounter = int64(r.TxId())
+		}
+		tx, found := txs[r.TxId()]
+		if !found {
+			tx = txMgr.InitTxWithId(r.TxId(), concurrency.ExclusiveMode)
+			txs[r.TxId()] = tx
+		}
+		switch r.Type() {
+		case logging.UpdateRecord:
+			page := storage.AllocatePage(len(r.Snapshot))
+			if err := page.UnmarshalBinary(r.Snapshot); err != nil {
+				log.Panic(err)
+			}
+			tx.WritePageAtPos(page, r.Pos)
+			break
+		case logging.CommitRecord:
 			tx.CommitNoLog()
+			delete(txs, tx.Id())
 			break
-		case abort:
+		case logging.AbortRecord:
 			tx.AbortNoLog()
+			delete(txs, tx.Id())
 			break
 		}
 	}
@@ -56,15 +59,3 @@ func (m *RecoveryManager) RollForward(txMgr *transaction.TransactionManager) {
 	}
 	txMgr.SetIdCounter(idCounter)
 }
-
-/*
-
-recMgr := NewRecoveryManager()
-recMgr.RollForward(txMgr)
-...
-tx := txMgr.InitTx(...)
-tx.ReadPageAtPos(pos)
-tx.WritePageAtPos(page, pos)
-tx.Commit()
-
-*/
