@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"dbms/pkg/concurrency"
+	"dbms/pkg/transaction"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -20,16 +21,8 @@ func (f *DesctiptorFactory) Generate() int {
 
 var connToClientDesc = map[*net.Conn]
 
-func handleConnection(conn *net.Conn) {
-	// store or generate new descriptor
-	// lock
-	clientDesc, found := connToClientDesc[conn]
-	if !found {
-		clientDesc = descFact.Generate()
-		connToClientDesc[conn] = clientDesc
-	}
-	// unlock
-	TxServer.Init(clientDesc)
+func handleDBMSConn(conn *net.Conn) {
+	clientDesc := TxServer.Init()
 	defer TxServer.Terminate(clientDesc)
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
@@ -39,21 +32,26 @@ func handleConnection(conn *net.Conn) {
 			log.Panic(err)
 		}
 		cmd := CommandParser.Parse(strCmd)
-		res := TxServer.ExecuteCmd(cmd)
+		res := TxServer.ExecuteCmd(clientDesc, cmd)
 		writer.Write(marshalResult(res))
 	}
 }
 
-ln, err := net.Listen("tcp", ":8080")
-if err != nil {
-	// handle error
-}
-for {
-	conn, err := ln.Accept()
+func main() {
+	txMgr := ...
+	logMgr := ...
+	NewRecoveryManager(txMgr, logMgr).RollForward()
+	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		// handle error
 	}
-	go handleConnection(conn)
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			// handle error
+		}
+		go handleDBMSConn(conn)
+	}
 }
 
 */
@@ -68,10 +66,26 @@ const (
 	AbortCmd  = 6
 )
 
+type Args struct {
+	key   string
+	value []byte
+}
+
 type Cmd struct {
 	cmdType int
 	key     string
 	value   []byte
+}
+
+func (c *Cmd) Type() int {
+	return c.cmdType
+}
+
+func (c *Cmd) Args() *Args {
+	a := new(Args)
+	a.key = c.key
+	a.value = c.value
+	return a
 }
 
 type Result struct {
@@ -90,24 +104,29 @@ func (f *DesctiptorFactory) GenerateUniqueDescriptor() int {
 
 type TxServer struct {
 	txMgr         *transaction.TransactionManager
-	descFact      *DesctiptorFactory
+	descFact      DesctiptorFactory
 	clientTxTable sync.Map
 }
 
-func NewTxServer() *TxServer {
+func NewTxServer(txMgr *transaction.TransactionManager) *TxServer {
 	s := new(TxServer)
-	s.descFact = new(DesctiptorFactory)
+	s.txMgr = txMgr
+	return s
 }
 
 func (s *TxServer) Init() int {
-	clientDesc := descFact.GenerateUniqueDescriptor()
-	s.clientTxTable.Store(clientDesc, nil.(*transaction.Transaction))
+	clientDesc := s.descFact.GenerateUniqueDescriptor()
+	var newTx *transaction.Transaction
+	s.clientTxTable.Store(clientDesc, newTx)
 	return clientDesc
 }
 
 func (s *TxServer) Terminate(clientDesc int) {
 	if e, found := s.clientTxTable.LoadAndDelete(clientDesc); found {
-		e.Value.(*transaction.Transaction).Abort()
+		tx := e.(*transaction.Transaction)
+		if tx != nil {
+			tx.Abort()
+		}
 	} else {
 		log.Panic("Can't terminate client's session: session not found")
 	}
@@ -118,10 +137,10 @@ func (s *TxServer) loadTx(clientDesc int) *transaction.Transaction {
 	if !found {
 		log.Panic("Session for provided client descriptor not found")
 	}
-	return e.Value.(*transaction.Transaction)
+	return e.(*transaction.Transaction)
 }
 
-func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor) *Result, tx *transaction.Transaction) (res *Result) {
+func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor), tx *transaction.Transaction) {
 	defer func() {
 		if err := recover(); err == concurrency.ErrTxLockTimeout {
 			tx.Abort()
@@ -129,21 +148,25 @@ func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor) *Result, tx *tra
 			log.Panic(err)
 		}
 	}()
-	return exec(NewExecutor(tx))
+	exec(NewExecutor(tx))
 }
 
 func (s *TxServer) ExecuteCmd(clientDesc int, cmd Cmd) *Result {
 	// TODO: state validate for commands
 	switch cmd.Type() {
 	case BegShCmd:
-		if _, found := s.clientTxTable.LoadOrStore(clientDesc, txMgr.InitTx(concurrency.SharedMode)); found {
+		tx := s.loadTx(clientDesc)
+		if tx != nil {
 			log.Panic("TMP panic: can't open tx in tx")
 		}
+		s.clientTxTable.Store(clientDesc, s.txMgr.InitTx(concurrency.SharedMode))
 		break
 	case BegExCmd:
-		if _, found := s.clientTxTable.LoadOrStore(clientDesc, txMgr.InitTx(concurrency.ExclusiveMode)); found {
+		tx := s.loadTx(clientDesc)
+		if tx != nil {
 			log.Panic("TMP panic: can't open tx in tx")
 		}
+		s.clientTxTable.Store(clientDesc, s.txMgr.InitTx(concurrency.ExclusiveMode))
 		break
 	case CommitCmd:
 		tx := s.loadTx(clientDesc)
@@ -151,7 +174,8 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd Cmd) *Result {
 			log.Panic("TMP panic: can't commit when no tx")
 		}
 		tx.Commit()
-		s.clientTxTable.Store(clientDesc, nil.(*transaction.Transaction))
+		var newTx *transaction.Transaction
+		s.clientTxTable.Store(clientDesc, newTx)
 		break
 	case AbortCmd:
 		tx := s.loadTx(clientDesc)
@@ -159,19 +183,20 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd Cmd) *Result {
 			log.Panic("TMP panic: can't abort when no tx")
 		}
 		tx.Abort()
-		s.clientTxTable.Store(clientDesc, nil.(*transaction.Transaction))
+		var newTx *transaction.Transaction
+		s.clientTxTable.Store(clientDesc, newTx)
 		break
 	default:
 		tx := s.loadTx(clientDesc)
-		res = new(Result)
+		res := new(Result)
 		func() {
 			if tx == nil {
-				tx = txMgr.InitTx(concurrency.SharedMode)
+				tx = s.txMgr.InitTx(concurrency.SharedMode)
 				defer tx.Commit()
 			}
 			s.runExecutorCommandsInTx(func(e *Executor) {
 				res = e.ExecuteCmd(cmd)
-			}(), tx)
+			}, tx)
 		}()
 		return res
 	}

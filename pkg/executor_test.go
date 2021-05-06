@@ -210,3 +210,54 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 		log.Panic(execErr)
 	}
 }
+
+func TestExecutor_ConcurrentSetTxServer(t *testing.T) {
+	execErr := utils.FileScopedExec("data.bin", func(dataFile *os.File) error {
+		return utils.FileScopedExec("log.bin", func(logFile *os.File) error {
+			txMgr := createDefaultTxMgr(dataFile, logFile)
+			func() {
+				tx := txMgr.InitTx(concurrency.ExclusiveMode)
+				defer tx.Commit()
+				e := NewExecutor(tx)
+				e.Init()
+			}()
+			keys := 1024
+			threads := 4
+			txSrv := NewTxServer(txMgr)
+			var wg sync.WaitGroup
+			wg.Add(threads)
+			for j := 0; j < threads; j++ {
+				go func() {
+					defer wg.Done()
+					desc := txSrv.Init()
+					defer txSrv.Terminate(desc)
+					cmd := Cmd{
+						BegShCmd,
+						"",
+						nil,
+					}
+					txSrv.ExecuteCmd(desc, cmd)
+					for i := 0; i < keys; i++ {
+						cmd = Cmd{
+							SetCmd,
+							strconv.Itoa(i),
+							[]byte(strconv.Itoa(i)),
+						}
+						txSrv.ExecuteCmd(desc, cmd)
+						cmd = Cmd{
+							GetCmd,
+							strconv.Itoa(i),
+							nil,
+						}
+						txSrv.ExecuteCmd(desc, cmd)
+					}
+				}()
+			}
+			wg.Wait()
+			return nil
+		})
+	})
+	if execErr != nil {
+		log.Panic(execErr)
+	}
+}
