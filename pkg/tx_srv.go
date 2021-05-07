@@ -8,53 +8,17 @@ import (
 	"sync/atomic"
 )
 
-/*
-
-type DesctiptorFactory struct {
-	counter int64
-}
-
-func (f *DesctiptorFactory) Generate() int {
-	// TODO: check ranges
-	return int(atomic.AddInt64(&f.counter, 1))
-}
-
-var connToClientDesc = map[*net.Conn]
-
-func handleDBMSConn(conn *net.Conn) {
-	clientDesc := TxServer.Init()
-	defer TxServer.Terminate(clientDesc)
-	reader := bufio.NewReader(conn)
-	writer := bufio.NewWriter(conn)
-	for {
-		strCmd, err := reader.ReadString('\n')
-		if err != nil {
-			log.Panic(err)
-		}
-		cmd := CommandParser.Parse(strCmd)
-		res := TxServer.ExecuteCmd(clientDesc, cmd)
-		writer.Write(marshalResult(res))
-	}
-}
-
-func main() {
-	txMgr := ...
-	logMgr := ...
-	NewRecoveryManager(txMgr, logMgr).RollForward()
-	ln, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		// handle error
-	}
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			// handle error
-		}
-		go handleDBMSConn(conn)
-	}
-}
-
-*/
+const helpSplash = `Commands structure:
+Data manipulation comands:
+	GET key         - finds value associated with key
+	SET key value   - sets value associated with key
+	DEL key         - removes value associated with key
+Transaction management commands:
+	BEGIN SHARED    - starts new transaction with per-operation isolation
+	BEGIN EXCLUSIVE - starts new transaction with per-transation isolation
+	COMMIT          - commits active transaction
+	ABORT           - aborts active transaction
+`
 
 const (
 	GetCmd    = 0
@@ -64,6 +28,7 @@ const (
 	BegExCmd  = 4
 	CommitCmd = 5
 	AbortCmd  = 6
+	HelpCmd   = 7
 )
 
 type Args struct {
@@ -89,8 +54,8 @@ func (c *Cmd) Args() *Args {
 }
 
 type Result struct {
-	ok    bool
 	value []byte
+	err   error
 }
 
 type DesctiptorFactory struct {
@@ -140,10 +105,11 @@ func (s *TxServer) loadTx(clientDesc int) *transaction.Transaction {
 	return e.(*transaction.Transaction)
 }
 
-func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor), tx *transaction.Transaction) {
+func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor), tx *transaction.Transaction, res *Result) {
 	defer func() {
 		if err := recover(); err == concurrency.ErrTxLockTimeout {
 			tx.Abort()
+			*res = Result{nil, concurrency.ErrTxLockTimeout}
 		} else if err != nil {
 			log.Panic(err)
 		}
@@ -151,7 +117,7 @@ func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor), tx *transaction
 	exec(NewExecutor(tx))
 }
 
-func (s *TxServer) ExecuteCmd(clientDesc int, cmd Cmd) *Result {
+func (s *TxServer) ExecuteCmd(clientDesc int, cmd *Cmd) *Result {
 	// TODO: state validate for commands
 	switch cmd.Type() {
 	case BegShCmd:
@@ -186,9 +152,14 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd Cmd) *Result {
 		var newTx *transaction.Transaction
 		s.clientTxTable.Store(clientDesc, newTx)
 		break
+	case HelpCmd:
+		res := new(Result)
+		res.value = []byte(helpSplash)
+		return res
 	default:
 		tx := s.loadTx(clientDesc)
 		res := new(Result)
+		txRes := new(Result)
 		func() {
 			if tx == nil {
 				tx = s.txMgr.InitTx(concurrency.SharedMode)
@@ -196,9 +167,16 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd Cmd) *Result {
 			}
 			s.runExecutorCommandsInTx(func(e *Executor) {
 				res = e.ExecuteCmd(cmd)
-			}, tx)
+				log.Print(res)
+			}, tx, txRes)
 		}()
+		if txRes.err != nil {
+			tx.Abort()
+			var newTx *transaction.Transaction
+			s.clientTxTable.Store(clientDesc, newTx)
+			return txRes
+		}
 		return res
 	}
-	return nil
+	return new(Result)
 }

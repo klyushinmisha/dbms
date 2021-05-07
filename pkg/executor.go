@@ -37,7 +37,7 @@ func (e *Executor) Get(key string) ([]byte, bool) {
 	args := new(Args)
 	args.key = key
 	res := e.getCommand(args)
-	return res.value, res.ok
+	return res.value, true
 }
 
 // facade method
@@ -53,11 +53,11 @@ func (e *Executor) Set(key string, value []byte) ([]byte, bool) {
 func (e *Executor) Delete(key string) ([]byte, bool) {
 	args := new(Args)
 	args.key = key
-	res := e.delCommand(args)
-	return nil, res.ok
+	e.delCommand(args)
+	return nil, true
 }
 
-func (e *Executor) ExecuteCmd(cmd Cmd) *Result {
+func (e *Executor) ExecuteCmd(cmd *Cmd) *Result {
 	return e.commandsMap[cmd.Type()](cmd.Args())
 }
 
@@ -66,7 +66,7 @@ func (e *Executor) getCommand(args *Args) *Result {
 	res := new(Result)
 	pos, findErr := e.index.Find(args.key)
 	if findErr == bp_tree.ErrKeyNotFound {
-		res.ok = false
+		res.err = bp_tree.ErrKeyNotFound
 		return res
 	} else if findErr != nil {
 		log.Panic(findErr)
@@ -76,12 +76,12 @@ func (e *Executor) getCommand(args *Args) *Result {
 		log.Panic(findErr)
 	}
 	res.value = data
-	res.ok = true
 	return res
 }
 
 func (e *Executor) setCommand(args *Args) *Result {
 	defer e.tx.DowngradeLocks()
+	res := new(Result)
 	pos, findErr := e.index.Find(args.key)
 	if findErr == nil {
 		if writeErr := e.da.WriteAtPos(args.key, args.value, pos); writeErr != nil {
@@ -96,7 +96,7 @@ func (e *Executor) setCommand(args *Args) *Result {
 	} else {
 		log.Panic(findErr)
 	}
-	return nil
+	return res
 }
 
 func (e *Executor) delCommand(args *Args) *Result {
@@ -104,12 +104,11 @@ func (e *Executor) delCommand(args *Args) *Result {
 	res := new(Result)
 	pos, err := e.index.Delete(args.key)
 	if err == bp_tree.ErrKeyNotFound {
-		res.ok = false
+		res.err = bp_tree.ErrKeyNotFound
 		return res
 	}
 	if delErr := e.da.DeleteAtPos(args.key, pos); delErr != nil {
 		log.Panic(delErr)
 	}
-	res.ok = true
 	return res
 }

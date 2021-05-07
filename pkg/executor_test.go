@@ -7,6 +7,7 @@ import (
 	"dbms/pkg/storage/buffer"
 	"dbms/pkg/transaction"
 	"dbms/pkg/utils"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
@@ -224,6 +225,7 @@ func TestExecutor_ConcurrentSetTxServer(t *testing.T) {
 			keys := 1024
 			threads := 4
 			txSrv := NewTxServer(txMgr)
+			p := NewDumbSingleLineParser()
 			var wg sync.WaitGroup
 			wg.Add(threads)
 			for j := 0; j < threads; j++ {
@@ -231,24 +233,12 @@ func TestExecutor_ConcurrentSetTxServer(t *testing.T) {
 					defer wg.Done()
 					desc := txSrv.Init()
 					defer txSrv.Terminate(desc)
-					cmd := Cmd{
-						BegShCmd,
-						"",
-						nil,
-					}
+					cmd, _ := p.Parse("BEGIN EXCLUSIVE")
 					txSrv.ExecuteCmd(desc, cmd)
 					for i := 0; i < keys; i++ {
-						cmd = Cmd{
-							SetCmd,
-							strconv.Itoa(i),
-							[]byte(strconv.Itoa(i)),
-						}
+						cmd, _ = p.Parse(fmt.Sprintf("SET %d %d", i, i))
 						txSrv.ExecuteCmd(desc, cmd)
-						cmd = Cmd{
-							GetCmd,
-							strconv.Itoa(i),
-							nil,
-						}
+						cmd, _ = p.Parse(fmt.Sprintf("GET %d", i))
 						txSrv.ExecuteCmd(desc, cmd)
 					}
 				}()
@@ -260,4 +250,15 @@ func TestExecutor_ConcurrentSetTxServer(t *testing.T) {
 	if execErr != nil {
 		log.Panic(execErr)
 	}
+}
+
+func TestExecutor_Parser(t *testing.T) {
+	p := NewDumbSingleLineParser()
+	log.Print(p.Parse("GET hello"))
+	log.Print(p.Parse("SET hello world"))
+	log.Print(p.Parse("DEL hello"))
+	log.Print(p.Parse("BEGIN SHARED"))
+	log.Print(p.Parse("BEGIN EXCLUSIVE"))
+	log.Print(p.Parse("COMMIT"))
+	log.Print(p.Parse("ABORT"))
 }

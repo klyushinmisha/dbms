@@ -111,7 +111,6 @@ func (tx *Transaction) WritePage(page *storage.HeapPage) int64 {
 }
 
 func (tx *Transaction) CommitNoLog() {
-	tx.validateTxStatus()
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.txMgr.bufSlotMgr.Flush(pos.(int64))
 		tx.txMgr.bufSlotMgr.Unpin(pos.(int64))
@@ -122,7 +121,6 @@ func (tx *Transaction) CommitNoLog() {
 }
 
 func (tx *Transaction) AbortNoLog() {
-	tx.validateTxStatus()
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.txMgr.bufSlotMgr.Flush(pos.(int64))
 		tx.txMgr.bufSlotMgr.Deallocate(pos.(int64))
@@ -132,7 +130,6 @@ func (tx *Transaction) AbortNoLog() {
 }
 
 func (tx *Transaction) Commit() {
-	tx.validateTxStatus()
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		if page := tx.txMgr.bufSlotMgr.ReadPageIfDirty(pos.(int64)); page != nil {
 			snapshot, err := page.MarshalBinary()
@@ -140,6 +137,7 @@ func (tx *Transaction) Commit() {
 				log.Panic(err)
 			}
 			tx.txMgr.logMgr.LogSnapshot(tx.id, pos.(int64), snapshot)
+			log.Print(tx.id)
 		}
 		return true
 	})
@@ -150,7 +148,6 @@ func (tx *Transaction) Commit() {
 }
 
 func (tx *Transaction) Abort() {
-	tx.validateTxStatus()
 	tx.txMgr.logMgr.LogAbort(tx.id)
 	tx.txMgr.logMgr.Flush()
 	tx.AbortNoLog()

@@ -19,4 +19,4 @@ var locksCompatMatrix = [][]bool{
 
 const lockTimeout = 10 * time.Second
 
-var ErrTxLockTimeout = errors.New("page lock timeout")
+var ErrTxLockTimeout = errors.New("Lock timeout exceeded")

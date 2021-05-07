@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ErrKeyNotFound = errors.New("provided key not found")
+	ErrKeyNotFound = errors.New("Not found")
 )
 
 // locking inspired by Lehman and Yao whitepaper (Efficient Locking for Concurrent Operations on B-Trees)
