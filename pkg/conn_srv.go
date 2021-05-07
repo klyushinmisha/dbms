@@ -2,25 +2,30 @@ package pkg
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"golang.org/x/sync/semaphore"
+	"io"
 	"log"
 	"net"
 	"strings"
 )
 
 type ConnServer struct {
+	cfg    *ServerConfig
 	parser Parser
 	txSrv  *TxServer
 }
 
-func NewConnServer(parser Parser, txSrv *TxServer) *ConnServer {
+func NewConnServer(cfg *ServerConfig, parser Parser, txSrv *TxServer) *ConnServer {
 	s := new(ConnServer)
+	s.cfg = cfg
 	s.parser = parser
 	s.txSrv = txSrv
 	return s
 }
 
-const splash = `
+const clientSplash = `
 
 __/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___        
  _\/\\\////////\\\__\/\\\/////////\\\_\/\\\\\\________/\\\\\\___/\\\/////////\\\_       
@@ -37,16 +42,47 @@ __/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___
 
 `
 
-func (s *ConnServer) Serve(conn net.Conn) {
+func (s *ConnServer) Run() {
+	ln, err := net.Listen(s.cfg.TransportProtocol, fmt.Sprintf(":%d", s.cfg.Port))
+	defer ln.Close()
+	if err != nil {
+		log.Panic(err)
+	}
+	log.Printf("Server is up on port %d", s.cfg.Port)
+	sem := semaphore.NewWeighted(int64(s.cfg.MaxConnections))
+	ctx := context.TODO()
+	for {
+		func() {
+			// acquire weighted semaphore to reduce concurrency
+			sem.Acquire(ctx, 1)
+			conn, err := ln.Accept()
+			if err != nil {
+				log.Panic(err)
+			}
+			log.Printf("Accepted connection with host %s", conn.RemoteAddr())
+			go func() {
+				defer func() {
+					log.Printf("Release connection with host %s", conn.RemoteAddr())
+					sem.Release(1)
+				}()
+				s.serve(conn)
+			}()
+		}()
+	}
+}
+
+func (s *ConnServer) serve(conn net.Conn) {
 	desc := s.txSrv.Init()
 	defer s.txSrv.Terminate(desc)
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
-	writer.Write([]byte(splash))
+	writer.Write([]byte(clientSplash))
 	writer.Flush()
 	for {
 		strCmd, err := reader.ReadString('\n')
-		if err != nil {
+		if err == io.EOF {
+			return
+		} else if err != nil {
 			log.Panic(err)
 		}
 		cmd, parseErr := s.parser.Parse(strings.TrimSpace(strCmd))

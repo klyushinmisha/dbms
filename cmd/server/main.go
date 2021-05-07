@@ -1,14 +1,27 @@
 package main
 
 import (
-	"context"
 	"dbms/pkg"
-	"fmt"
-	"golang.org/x/sync/semaphore"
 	"log"
-	"net"
 	"os"
 )
+
+const serverSplash = `
+
+__/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___        
+ _\/\\\////////\\\__\/\\\/////////\\\_\/\\\\\\________/\\\\\\___/\\\/////////\\\_       
+  _\/\\\______\//\\\_\/\\\_______\/\\\_\/\\\//\\\____/\\\//\\\__\//\\\______\///__      
+   _\/\\\_______\/\\\_\/\\\\\\\\\\\\\\__\/\\\\///\\\/\\\/_\/\\\___\////\\\_________     
+    _\/\\\_______\/\\\_\/\\\/////////\\\_\/\\\__\///\\\/___\/\\\______\////\\\______    
+     _\/\\\_______\/\\\_\/\\\_______\/\\\_\/\\\____\///_____\/\\\_________\////\\\___   
+      _\/\\\_______/\\\__\/\\\_______\/\\\_\/\\\_____________\/\\\__/\\\______\//\\\__  
+       _\/\\\\\\\\\\\\/___\/\\\\\\\\\\\\\/__\/\\\_____________\/\\\_\///\\\\\\\\\\\/___ 
+        _\////////////_____\/////////////____\///______________\///____\///////////_____
+
+                    DBMS - key-value database management system server
+
+
+`
 
 func main() {
 	cfgLdr := new(pkg.DefaultConfigLoader)
@@ -26,33 +39,15 @@ func main() {
 	defer logFile.Close()
 
 	coreCfgr := pkg.NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg(), dataFile, logFile)
-	srvCfgr := pkg.NewDefaultDBMSServerConfigurator(coreCfgr)
+	srvCfgr := pkg.NewDefaultDBMSServerConfigurator(cfgLdr.SrvCfg(), coreCfgr)
 
+	log.Print(serverSplash)
 	// init storage before recovery attempt
 	srvCfgr.TxSrv().InitStorage()
-
+	log.Printf("Initialized storage %s", cfgLdr.CoreCfg().DataPath())
 	// run recovery from journal
 	coreCfgr.RecMgr().RollForward(coreCfgr.TxMgr())
-
-	ln, err := net.Listen(cfgLdr.SrvCfg().TransportProtocol, fmt.Sprintf(":%d", cfgLdr.SrvCfg().Port))
-	if err != nil {
-		log.Panic(err)
-	}
-
-	sem := semaphore.NewWeighted(int64(cfgLdr.SrvCfg().MaxConnections))
-	ctx := context.TODO()
-	for {
-		func() {
-			// acquire weighted semaphore to reduce concurrency
-			sem.Acquire(ctx, 1)
-			conn, err := ln.Accept()
-			if err != nil {
-				log.Panic(err)
-			}
-			go func() {
-				defer sem.Release(1)
-				srvCfgr.ConnSrv().Serve(conn)
-			}()
-		}()
-	}
+	log.Printf("Recovered from journal %s", cfgLdr.CoreCfg().LogPath())
+	// accept incoming connections and process transactions
+	srvCfgr.ConnSrv().Run()
 }

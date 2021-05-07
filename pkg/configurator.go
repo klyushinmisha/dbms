@@ -71,12 +71,14 @@ func (c *DefaultDBMSCoreConfigurator) RecMgr() *recovery.RecoveryManager {
 }
 
 type DefaultDBMSServerConfigurator struct {
+	cfg      *ServerConfig
 	coreCfgr DBMSCoreConfigurator
 	txSrv    *TxServer
 }
 
-func NewDefaultDBMSServerConfigurator(coreCfgr DBMSCoreConfigurator) *DefaultDBMSServerConfigurator {
+func NewDefaultDBMSServerConfigurator(cfg *ServerConfig, coreCfgr DBMSCoreConfigurator) *DefaultDBMSServerConfigurator {
 	c := new(DefaultDBMSServerConfigurator)
+	c.cfg = cfg
 	c.coreCfgr = coreCfgr
 	return c
 }
@@ -91,6 +93,7 @@ func (c *DefaultDBMSServerConfigurator) TxSrv() *TxServer {
 
 func (c *DefaultDBMSServerConfigurator) ConnSrv() *ConnServer {
 	return NewConnServer(
+		c.cfg,
 		NewDumbSingleLineParser(),
 		c.TxSrv(),
 	)
