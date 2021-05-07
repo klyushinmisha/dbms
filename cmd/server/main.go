@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"dbms/pkg"
-	"dbms/pkg/concurrency"
 	"fmt"
 	"golang.org/x/sync/semaphore"
 	"log"
@@ -31,13 +30,6 @@ func main() {
 
 	// run recovery from journal
 	coreCfgr.RecMgr().RollForward(coreCfgr.TxMgr())
-
-	func() {
-		tx := coreCfgr.TxMgr().InitTx(concurrency.ExclusiveMode)
-		defer tx.Commit()
-		e := pkg.NewExecutor(tx)
-		e.Init()
-	}()
 
 	ln, err := net.Listen(cfgLdr.SrvCfg().TransportProtocol, fmt.Sprintf(":%d", cfgLdr.SrvCfg().Port))
 	if err != nil {
