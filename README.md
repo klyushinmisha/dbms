@@ -30,7 +30,7 @@ __/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___
 
 HELP
 Commands structure:
-Data manipulation comands:
+Data manipulation commands:
         GET key         - finds value associated with key
         SET key value   - sets value associated with key
         DEL key         - removes value associated with key
