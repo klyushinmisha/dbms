@@ -46,7 +46,6 @@ func (s *ConnServer) Serve(conn net.Conn) {
 	writer.Flush()
 	for {
 		strCmd, err := reader.ReadString('\n')
-		log.Print(strings.TrimSpace(strCmd))
 		if err != nil {
 			log.Panic(err)
 		}

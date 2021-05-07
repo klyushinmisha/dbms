@@ -137,7 +137,6 @@ func (tx *Transaction) Commit() {
 				log.Panic(err)
 			}
 			tx.txMgr.logMgr.LogSnapshot(tx.id, pos.(int64), snapshot)
-			log.Print(tx.id)
 		}
 		return true
 	})

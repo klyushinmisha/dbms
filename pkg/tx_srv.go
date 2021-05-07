@@ -181,7 +181,6 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd *Cmd) *Result {
 			}
 			s.runExecutorCommandsInTx(func(e *Executor) {
 				res = e.ExecuteCmd(cmd)
-				log.Print(res)
 			}, tx, txRes)
 		}()
 		if txRes.err != nil {
