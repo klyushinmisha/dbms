@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"dbms/pkg"
 	"dbms/pkg/concurrency"
 	"dbms/pkg/logging"
@@ -8,12 +9,15 @@ import (
 	"dbms/pkg/storage"
 	"dbms/pkg/storage/buffer"
 	"dbms/pkg/transaction"
+	"golang.org/x/sync/semaphore"
 	"log"
 	"net"
 	"os"
 )
 
 const Page8K = 8192
+
+const maxConnections = 100
 
 func main() {
 	dataFile, err := os.OpenFile("data.bin", os.O_RDWR|os.O_CREATE, 0666)
@@ -55,18 +59,25 @@ func main() {
 		pkg.NewTxServer(txMgr),
 	)
 
-	// NewRecoveryManager(txMgr, logMgr).RollForward()
 	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
-		// handle error
+		log.Panic(err)
 	}
 
+	sem := semaphore.NewWeighted(int64(maxConnections))
+	ctx := context.TODO()
 	for {
-		// TODO: acquire weighted semaphore to reduce concurrency
-		conn, err := ln.Accept()
-		if err != nil {
-			// handle error
-		}
-		go connSrv.Serve(conn)
+		func() {
+			// acquire weighted semaphore to reduce concurrency
+			sem.Acquire(ctx, 1)
+			conn, err := ln.Accept()
+			if err != nil {
+				log.Panic(err)
+			}
+			go func() {
+				defer sem.Release(1)
+				connSrv.Serve(conn)
+			}()
+		}()
 	}
 }
