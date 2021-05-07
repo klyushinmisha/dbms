@@ -64,7 +64,9 @@ func (s *ConnServer) Serve(conn net.Conn) {
 				resp = "OK"
 			}
 		}
-		writer.Write([]byte(fmt.Sprintf("%s\n", resp)))
+		if _, writeErr := writer.Write([]byte(fmt.Sprintf("%s\n", resp))); writeErr != nil {
+			log.Panic(writeErr)
+		}
 		writer.Flush()
 	}
 }
