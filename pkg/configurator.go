@@ -85,7 +85,6 @@ func (c *DefaultDBMSServerConfigurator) TxSrv() *TxServer {
 	// singleton
 	if c.txSrv == nil {
 		c.txSrv = NewTxServer(c.coreCfgr.TxMgr())
-		c.txSrv.InitStorage()
 	}
 	return c.txSrv
 }

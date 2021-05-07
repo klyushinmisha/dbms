@@ -28,6 +28,9 @@ func main() {
 	coreCfgr := pkg.NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg(), dataFile, logFile)
 	srvCfgr := pkg.NewDefaultDBMSServerConfigurator(coreCfgr)
 
+	// init storage before recovery attempt
+	srvCfgr.TxSrv().InitStorage()
+
 	// run recovery from journal
 	coreCfgr.RecMgr().RollForward(coreCfgr.TxMgr())
 
