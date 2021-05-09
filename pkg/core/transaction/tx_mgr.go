@@ -128,6 +128,7 @@ func (tx *Tx) CommitNoLog() {
 		return true
 	})
 	tx.strgMgr.Flush()
+	tx.logMgr.Release(tx.Id())
 }
 
 func (tx *Tx) AbortNoLog() {
@@ -137,6 +138,7 @@ func (tx *Tx) AbortNoLog() {
 		tx.sharedLockTable.Unlock(pos.(int64))
 		return true
 	})
+	tx.logMgr.Release(tx.Id())
 }
 
 func (tx *Tx) Commit() {
