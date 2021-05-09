@@ -52,21 +52,19 @@ func (s *ConnServer) Run() {
 	sem := semaphore.NewWeighted(int64(s.cfg.MaxConnections))
 	ctx := context.TODO()
 	for {
-		func() {
-			// acquire weighted semaphore to reduce concurrency
-			sem.Acquire(ctx, 1)
-			conn, err := ln.Accept()
-			if err != nil {
-				log.Panic(err)
-			}
-			log.Printf("Accepted connection with host %s", conn.RemoteAddr())
-			go func() {
-				defer func() {
-					log.Printf("Release connection with host %s", conn.RemoteAddr())
-					sem.Release(1)
-				}()
-				s.serve(conn)
+		// acquire weighted semaphore to reduce concurrency
+		sem.Acquire(ctx, 1)
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Panic(err)
+		}
+		log.Printf("Accepted connection with host %s", conn.RemoteAddr())
+		go func() {
+			defer func() {
+				log.Printf("Release connection with host %s", conn.RemoteAddr())
+				sem.Release(1)
 			}()
+			s.serve(conn)
 		}()
 	}
 }
