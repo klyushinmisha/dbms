@@ -3,6 +3,7 @@ package pkg
 import (
 	"bufio"
 	"context"
+	"dbms/pkg/config"
 	"fmt"
 	"golang.org/x/sync/semaphore"
 	"io"
@@ -12,12 +13,12 @@ import (
 )
 
 type ConnServer struct {
-	cfg    *ServerConfig
+	cfg    *config.ServerConfig
 	parser Parser
 	txSrv  *TxServer
 }
 
-func NewConnServer(cfg *ServerConfig, parser Parser, txSrv *TxServer) *ConnServer {
+func NewConnServer(cfg *config.ServerConfig, parser Parser, txSrv *TxServer) *ConnServer {
 	s := new(ConnServer)
 	s.cfg = cfg
 	s.parser = parser

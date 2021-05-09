@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"dbms/pkg/concurrency"
+	"dbms/pkg/config"
 	"dbms/pkg/logging"
 	"dbms/pkg/recovery"
 	"dbms/pkg/storage"
@@ -23,7 +24,7 @@ type DBMSServerConfigurator interface {
 
 // dataFile and logFile must be unique per configuration to prevent multiple access to same files
 type DefaultDBMSCoreConfigurator struct {
-	cfg        *CoreConfig
+	cfg        *config.CoreConfig
 	dataFile   *os.File
 	logFile    *os.File
 	bufSlotMgr *buffer.BufferSlotManager
@@ -31,7 +32,7 @@ type DefaultDBMSCoreConfigurator struct {
 	logMgr     *logging.LogManager
 }
 
-func NewDefaultDBMSCoreConfigurator(cfg *CoreConfig, dataFile *os.File, logFile *os.File) *DefaultDBMSCoreConfigurator {
+func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig, dataFile *os.File, logFile *os.File) *DefaultDBMSCoreConfigurator {
 	c := new(DefaultDBMSCoreConfigurator)
 	c.cfg = cfg
 	c.dataFile = dataFile
@@ -71,12 +72,12 @@ func (c *DefaultDBMSCoreConfigurator) RecMgr() *recovery.RecoveryManager {
 }
 
 type DefaultDBMSServerConfigurator struct {
-	cfg      *ServerConfig
+	cfg      *config.ServerConfig
 	coreCfgr DBMSCoreConfigurator
 	txSrv    *TxServer
 }
 
-func NewDefaultDBMSServerConfigurator(cfg *ServerConfig, coreCfgr DBMSCoreConfigurator) *DefaultDBMSServerConfigurator {
+func NewDefaultDBMSServerConfigurator(cfg *config.ServerConfig, coreCfgr DBMSCoreConfigurator) *DefaultDBMSServerConfigurator {
 	c := new(DefaultDBMSServerConfigurator)
 	c.cfg = cfg
 	c.coreCfgr = coreCfgr

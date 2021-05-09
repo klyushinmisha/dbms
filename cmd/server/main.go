@@ -2,6 +2,7 @@ package main
 
 import (
 	"dbms/pkg"
+	"dbms/pkg/config"
 	"log"
 	"os"
 )
@@ -24,7 +25,7 @@ __/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___
 `
 
 func main() {
-	cfgLdr := new(pkg.DefaultConfigLoader)
+	cfgLdr := new(config.DefaultConfigLoader)
 	cfgLdr.Load()
 
 	dataFile, err := os.OpenFile(cfgLdr.CoreCfg().DataPath(), os.O_RDWR|os.O_CREATE, 0666)
