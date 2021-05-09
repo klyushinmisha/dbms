@@ -1042,14 +1042,14 @@ var keys = []string{
 
 const Page8K = 8192
 
-func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TransactionManager {
+func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TxManager {
 	bufferCap := 1024
 	buf := buffer.NewBufferSlotManager(
 		storage.NewStorageManager(dataFile, Page8K),
 		bufferCap,
 		Page8K,
 	)
-	return transaction.NewTransactionManager(
+	return transaction.NewTxManager(
 		0,
 		buf,
 		logging.NewLogManager(logFile, Page8K),

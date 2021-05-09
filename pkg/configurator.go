@@ -11,7 +11,7 @@ import (
 )
 
 type DBMSCoreConfigurator interface {
-	TxMgr() *transaction.TransactionManager
+	TxMgr() *transaction.TxManager
 	LogMgr() *logging.LogManager
 	RecMgr() *recovery.RecoveryManager
 }
@@ -27,7 +27,7 @@ type DefaultDBMSCoreConfigurator struct {
 	dataFile   *os.File
 	logFile    *os.File
 	bufSlotMgr *buffer.BufferSlotManager
-	txMgr      *transaction.TransactionManager
+	txMgr      *transaction.TxManager
 	logMgr     *logging.LogManager
 }
 
@@ -45,10 +45,10 @@ func NewDefaultDBMSCoreConfigurator(cfg *CoreConfig, dataFile *os.File, logFile 
 	return c
 }
 
-func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TransactionManager {
+func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
 	// singleton
 	if c.txMgr == nil {
-		c.txMgr = transaction.NewTransactionManager(
+		c.txMgr = transaction.NewTxManager(
 			0,
 			c.bufSlotMgr,
 			c.LogMgr(),

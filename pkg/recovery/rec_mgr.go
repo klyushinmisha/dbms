@@ -18,9 +18,9 @@ func NewRecoveryManager(logMgr *logging.LogManager) *RecoveryManager {
 	return m
 }
 
-func (m *RecoveryManager) RollForward(txMgr *transaction.TransactionManager) {
+func (m *RecoveryManager) RollForward(txMgr *transaction.TxManager) {
 	var maxTxId int
-	txs := make(map[int]*transaction.Transaction)
+	txs := make(map[int]*transaction.Tx)
 	logsIter := m.logMgr.Iterator()
 	for {
 		r := logsIter()

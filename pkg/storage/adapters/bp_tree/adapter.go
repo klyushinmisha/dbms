@@ -6,10 +6,10 @@ import (
 )
 
 type BPTreeAdapter struct {
-	tx *transaction.Transaction
+	tx *transaction.Tx
 }
 
-func NewBPTreeAdapter(tx *transaction.Transaction) *BPTreeAdapter {
+func NewBPTreeAdapter(tx *transaction.Tx) *BPTreeAdapter {
 	var ba BPTreeAdapter
 	ba.tx = tx
 	return &ba

@@ -15,7 +15,7 @@ import (
 
 const Page8K = 8192
 
-func TestTransactionManager_InitUpdateCommit(t *testing.T) {
+func TestTxManager_InitUpdateCommit(t *testing.T) {
 	execErr := utils.FileScopedExec("database.bin", func(dataFile *os.File) error {
 		return utils.FileScopedExec("log.bin", func(logFile *os.File) error {
 			txCount := 32
@@ -26,7 +26,7 @@ func TestTransactionManager_InitUpdateCommit(t *testing.T) {
 				bufferCap,
 				Page8K,
 			)
-			txMgr := NewTransactionManager(
+			txMgr := NewTxManager(
 				0,
 				buf,
 				logging.NewLogManager(logFile, Page8K),
@@ -81,7 +81,7 @@ func TestTransactionManager_InitUpdateCommit(t *testing.T) {
 	}
 }
 
-func TestTransactionManager_InitUpdateAbort(t *testing.T) {
+func TestTxManager_InitUpdateAbort(t *testing.T) {
 	execErr := utils.FileScopedExec("database.bin", func(dataFile *os.File) error {
 		return utils.FileScopedExec("log.bin", func(logFile *os.File) error {
 			txCount := 32
@@ -92,7 +92,7 @@ func TestTransactionManager_InitUpdateAbort(t *testing.T) {
 				bufferCap,
 				Page8K,
 			)
-			txMgr := NewTransactionManager(
+			txMgr := NewTxManager(
 				0,
 				buf,
 				logging.NewLogManager(logFile, Page8K),

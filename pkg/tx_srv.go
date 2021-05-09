@@ -59,12 +59,12 @@ type Result struct {
 }
 
 type TxServer struct {
-	txMgr         *transaction.TransactionManager
+	txMgr         *transaction.TxManager
 	descCtr       atomic.AtomicCounter
 	clientTxTable sync.Map
 }
 
-func NewTxServer(txMgr *transaction.TransactionManager) *TxServer {
+func NewTxServer(txMgr *transaction.TxManager) *TxServer {
 	s := new(TxServer)
 	s.txMgr = txMgr
 	return s
@@ -72,14 +72,14 @@ func NewTxServer(txMgr *transaction.TransactionManager) *TxServer {
 
 func (s *TxServer) Init() int {
 	clientDesc := s.descCtr.Incr()
-	var newTx *transaction.Transaction
+	var newTx *transaction.Tx
 	s.clientTxTable.Store(clientDesc, newTx)
 	return clientDesc
 }
 
 func (s *TxServer) Terminate(clientDesc int) {
 	if e, found := s.clientTxTable.LoadAndDelete(clientDesc); found {
-		tx := e.(*transaction.Transaction)
+		tx := e.(*transaction.Tx)
 		if tx != nil {
 			tx.Abort()
 		}
@@ -88,15 +88,15 @@ func (s *TxServer) Terminate(clientDesc int) {
 	}
 }
 
-func (s *TxServer) loadTx(clientDesc int) *transaction.Transaction {
+func (s *TxServer) loadTx(clientDesc int) *transaction.Tx {
 	e, found := s.clientTxTable.Load(clientDesc)
 	if !found {
 		log.Panic("Session for provided client descriptor not found")
 	}
-	return e.(*transaction.Transaction)
+	return e.(*transaction.Tx)
 }
 
-func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor), tx *transaction.Transaction, res *Result) {
+func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor), tx *transaction.Tx, res *Result) {
 	defer func() {
 		if err := recover(); err == concurrency.ErrTxLockTimeout {
 			tx.Abort()
@@ -145,7 +145,7 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd *Cmd) *Result {
 			log.Panic("TMP panic: can't commit when no tx")
 		}
 		tx.Commit()
-		var newTx *transaction.Transaction
+		var newTx *transaction.Tx
 		s.clientTxTable.Store(clientDesc, newTx)
 		break
 	case AbortCmd:
@@ -154,7 +154,7 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd *Cmd) *Result {
 			log.Panic("TMP panic: can't abort when no tx")
 		}
 		tx.Abort()
-		var newTx *transaction.Transaction
+		var newTx *transaction.Tx
 		s.clientTxTable.Store(clientDesc, newTx)
 		break
 	case HelpCmd:
@@ -176,7 +176,7 @@ func (s *TxServer) ExecuteCmd(clientDesc int, cmd *Cmd) *Result {
 		}()
 		if txRes.err != nil {
 			tx.Abort()
-			var newTx *transaction.Transaction
+			var newTx *transaction.Tx
 			s.clientTxTable.Store(clientDesc, newTx)
 			return txRes
 		}

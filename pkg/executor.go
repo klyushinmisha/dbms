@@ -9,13 +9,13 @@ import (
 )
 
 type Executor struct {
-	tx          *transaction.Transaction
+	tx          *transaction.Tx
 	index       *bp_tree.BPTree
 	da          *dataAdapter.DataAdapter
 	commandsMap map[int]func(args *Args) *Result
 }
 
-func NewExecutor(tx *transaction.Transaction) *Executor {
+func NewExecutor(tx *transaction.Tx) *Executor {
 	e := new(Executor)
 	e.tx = tx
 	e.index = bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(tx))

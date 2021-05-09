@@ -19,14 +19,14 @@ import (
 
 const Page8K = 8192
 
-func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TransactionManager {
+func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TxManager {
 	bufferCap := 8192
 	buf := buffer.NewBufferSlotManager(
 		storage.NewStorageManager(dataFile, Page8K),
 		bufferCap,
 		Page8K,
 	)
-	return transaction.NewTransactionManager(
+	return transaction.NewTxManager(
 		0,
 		buf,
 		logging.NewLogManager(logFile, Page8K),

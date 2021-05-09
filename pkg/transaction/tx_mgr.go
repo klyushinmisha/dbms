@@ -16,64 +16,64 @@ const (
 	aborted    = 2
 )
 
-// Transaction is a single-thread ACID transaction
-type Transaction struct {
+// Tx is a single-thread ACID transaction
+type Tx struct {
 	id       int
 	lockMode int
 	status   int
 	// lockedPages is a set of pages positions
 	// TODO: use regular map
 	lockedPages sync.Map
-	txMgr       *TransactionManager
+	txMgr       *TxManager
 }
 
-func (t *Transaction) Id() int {
+func (t *Tx) Id() int {
 	return t.id
 }
 
-type TransactionManager struct {
+type TxManager struct {
 	idCtr           atomic.AtomicCounter
 	bufSlotMgr      *buffer.BufferSlotManager
 	logMgr          *logging.LogManager
 	sharedLockTable *concurrency.LockTable
 }
 
-func NewTransactionManager(
+func NewTxManager(
 	lastTxId int64,
 	bufSlotMgr *buffer.BufferSlotManager,
 	logMgr *logging.LogManager,
 	sharedLockTable *concurrency.LockTable,
-) *TransactionManager {
-	txMgr := new(TransactionManager)
+) *TxManager {
+	txMgr := new(TxManager)
 	txMgr.bufSlotMgr = bufSlotMgr
 	txMgr.logMgr = logMgr
 	txMgr.sharedLockTable = sharedLockTable
 	return txMgr
 }
 
-func (m *TransactionManager) SetIdCounter(idCounter int) {
+func (m *TxManager) SetIdCounter(idCounter int) {
 	m.idCtr.Init(idCounter)
 }
 
-func (m *TransactionManager) InitTx(lockMode int) *Transaction {
+func (m *TxManager) InitTx(lockMode int) *Tx {
 	return m.InitTxWithId(m.idCtr.Incr(), lockMode)
 }
 
-func (m *TransactionManager) InitTxWithId(id int, lockMode int) *Transaction {
-	tx := new(Transaction)
+func (m *TxManager) InitTxWithId(id int, lockMode int) *Tx {
+	tx := new(Tx)
 	tx.id = id
 	tx.lockMode = lockMode
 	tx.txMgr = m
 	return tx
 }
 
-func (tx *Transaction) validateTxStatus() {
+func (tx *Tx) validateTxStatus() {
 	if tx.status != processing {
 		log.Panic("transaction processing finished")
 	}
 }
 
-func (tx *Transaction) fetchAndLockPage(pos int64) {
+func (tx *Tx) fetchAndLockPage(pos int64) {
 	if _, found := tx.lockedPages.Load(pos); found {
 		tx.txMgr.sharedLockTable.UpgradeLock(pos, tx.id)
 		return
@@ -85,33 +85,33 @@ func (tx *Transaction) fetchAndLockPage(pos int64) {
 	tx.lockedPages.Store(pos, struct{}{})
 }
 
-func (tx *Transaction) DowngradeLocks() {
+func (tx *Tx) DowngradeLocks() {
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.txMgr.sharedLockTable.DowngradeLock(pos.(int64))
 		return true
 	})
 }
 
-func (tx *Transaction) ReadPageAtPos(pos int64) *storage.HeapPage {
+func (tx *Tx) ReadPageAtPos(pos int64) *storage.HeapPage {
 	tx.validateTxStatus()
 	tx.fetchAndLockPage(pos)
 	return tx.txMgr.bufSlotMgr.ReadPageAtPos(pos)
 }
 
-func (tx *Transaction) WritePageAtPos(page *storage.HeapPage, pos int64) {
+func (tx *Tx) WritePageAtPos(page *storage.HeapPage, pos int64) {
 	tx.validateTxStatus()
 	tx.fetchAndLockPage(pos)
 	tx.txMgr.bufSlotMgr.WritePageAtPos(page, pos)
 }
 
-func (tx *Transaction) WritePage(page *storage.HeapPage) int64 {
+func (tx *Tx) WritePage(page *storage.HeapPage) int64 {
 	tx.validateTxStatus()
 	pos := tx.txMgr.bufSlotMgr.StorageManager().Extend()
 	tx.WritePageAtPos(page, pos)
 	return pos
 }
 
-func (tx *Transaction) CommitNoLog() {
+func (tx *Tx) CommitNoLog() {
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.txMgr.bufSlotMgr.Flush(pos.(int64))
 		tx.txMgr.bufSlotMgr.Unpin(pos.(int64))
@@ -121,7 +121,7 @@ func (tx *Transaction) CommitNoLog() {
 	tx.txMgr.bufSlotMgr.StorageManager().Flush()
 }
 
-func (tx *Transaction) AbortNoLog() {
+func (tx *Tx) AbortNoLog() {
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.txMgr.bufSlotMgr.Flush(pos.(int64))
 		tx.txMgr.bufSlotMgr.Deallocate(pos.(int64))
@@ -130,7 +130,7 @@ func (tx *Transaction) AbortNoLog() {
 	})
 }
 
-func (tx *Transaction) Commit() {
+func (tx *Tx) Commit() {
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		if page := tx.txMgr.bufSlotMgr.ReadPageIfDirty(pos.(int64)); page != nil {
 			snapshot, err := page.MarshalBinary()
@@ -147,13 +147,13 @@ func (tx *Transaction) Commit() {
 	tx.status = committed
 }
 
-func (tx *Transaction) Abort() {
+func (tx *Tx) Abort() {
 	tx.txMgr.logMgr.LogAbort(tx.id)
 	tx.txMgr.logMgr.Flush()
 	tx.AbortNoLog()
 	tx.status = aborted
 }
 
-func (tx *Transaction) StorageManager() *storage.StorageManager {
+func (tx *Tx) StorageManager() *storage.StorageManager {
 	return tx.txMgr.bufSlotMgr.StorageManager()
 }

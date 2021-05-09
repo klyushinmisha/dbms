@@ -25,7 +25,7 @@ func TestRecoveryManager_LogRecovery(t *testing.T) {
 				128,
 				pageSize,
 			)
-			txMgr := transaction.NewTransactionManager(
+			txMgr := transaction.NewTxManager(
 				0,
 				buf,
 				logMgr,
