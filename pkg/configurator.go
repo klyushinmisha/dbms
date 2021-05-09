@@ -5,6 +5,7 @@ import (
 	"dbms/pkg/config"
 	"dbms/pkg/logging"
 	"dbms/pkg/recovery"
+	"dbms/pkg/server"
 	"dbms/pkg/storage"
 	"dbms/pkg/storage/buffer"
 	"dbms/pkg/transaction"
@@ -18,8 +19,8 @@ type DBMSCoreConfigurator interface {
 }
 
 type DBMSServerConfigurator interface {
-	TxSrv() *TxServer
-	ConnSrv() *ConnServer
+	TxSrv() *server.TxServer
+	ConnSrv() *server.ConnServer
 }
 
 // dataFile and logFile must be unique per configuration to prevent multiple access to same files
@@ -74,7 +75,7 @@ func (c *DefaultDBMSCoreConfigurator) RecMgr() *recovery.RecoveryManager {
 type DefaultDBMSServerConfigurator struct {
 	cfg      *config.ServerConfig
 	coreCfgr DBMSCoreConfigurator
-	txSrv    *TxServer
+	txSrv    *server.TxServer
 }
 
 func NewDefaultDBMSServerConfigurator(cfg *config.ServerConfig, coreCfgr DBMSCoreConfigurator) *DefaultDBMSServerConfigurator {
@@ -84,18 +85,18 @@ func NewDefaultDBMSServerConfigurator(cfg *config.ServerConfig, coreCfgr DBMSCor
 	return c
 }
 
-func (c *DefaultDBMSServerConfigurator) TxSrv() *TxServer {
+func (c *DefaultDBMSServerConfigurator) TxSrv() *server.TxServer {
 	// singleton
 	if c.txSrv == nil {
-		c.txSrv = NewTxServer(c.coreCfgr.TxMgr())
+		c.txSrv = server.NewTxServer(c.coreCfgr.TxMgr())
 	}
 	return c.txSrv
 }
 
-func (c *DefaultDBMSServerConfigurator) ConnSrv() *ConnServer {
-	return NewConnServer(
+func (c *DefaultDBMSServerConfigurator) ConnSrv() *server.ConnServer {
+	return server.NewConnServer(
 		c.cfg,
-		NewDumbSingleLineParser(),
+		server.NewDumbSingleLineParser(),
 		c.TxSrv(),
 	)
 }
