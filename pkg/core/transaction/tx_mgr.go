@@ -33,6 +33,7 @@ func (t *Tx) Id() int {
 
 type TxManager struct {
 	idCtr           atomic.AtomicCounter
+	strgMgr         *storage.StorageManager
 	bufSlotMgr      *buffer.BufferSlotManager
 	logMgr          *logging.LogManager
 	sharedLockTable *concurrency.LockTable
@@ -40,13 +41,14 @@ type TxManager struct {
 }
 
 func NewTxManager(
-	lastTxId int64,
+	strgMgr *storage.StorageManager,
 	bufSlotMgr *buffer.BufferSlotManager,
 	logMgr *logging.LogManager,
 	sharedLockTable *concurrency.LockTable,
 	a *storage.HeapPageAllocator,
 ) *TxManager {
 	txMgr := new(TxManager)
+	txMgr.strgMgr = strgMgr
 	txMgr.bufSlotMgr = bufSlotMgr
 	txMgr.logMgr = logMgr
 	txMgr.sharedLockTable = sharedLockTable
@@ -113,7 +115,7 @@ func (tx *Tx) WritePageAtPos(page *storage.HeapPage, pos int64) {
 
 func (tx *Tx) WritePage(page *storage.HeapPage) int64 {
 	tx.validateTxStatus()
-	pos := tx.txMgr.bufSlotMgr.StorageManager().Extend()
+	pos := tx.txMgr.strgMgr.Extend()
 	tx.WritePageAtPos(page, pos)
 	return pos
 }
@@ -125,7 +127,7 @@ func (tx *Tx) CommitNoLog() {
 		tx.txMgr.sharedLockTable.Unlock(pos.(int64))
 		return true
 	})
-	tx.txMgr.bufSlotMgr.StorageManager().Flush()
+	tx.txMgr.strgMgr.Flush()
 }
 
 func (tx *Tx) AbortNoLog() {
@@ -163,5 +165,5 @@ func (tx *Tx) Abort() {
 
 // TODO: move logic to some injectable interface inplemetation
 func (tx *Tx) StorageManager() *storage.StorageManager {
-	return tx.txMgr.bufSlotMgr.StorageManager()
+	return tx.txMgr.strgMgr
 }

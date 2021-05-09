@@ -22,6 +22,7 @@ type DefaultDBMSCoreConfigurator struct {
 	cfg        *config.CoreConfig
 	dataFile   *os.File
 	logFile    *os.File
+	strgMgr    *storage.StorageManager
 	bufSlotMgr *buffer.BufferSlotManager
 	txMgr      *transaction.TxManager
 	logMgr     *logging.LogManager
@@ -32,8 +33,9 @@ func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig, dataFile *os.File, l
 	c.cfg = cfg
 	c.dataFile = dataFile
 	c.logFile = logFile
+	c.strgMgr = storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(c.cfg.PageSize))
 	c.bufSlotMgr = buffer.NewBufferSlotManager(
-		storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(c.cfg.PageSize)),
+		c.strgMgr,
 		cfg.BufCap,
 		cfg.PageSize,
 	)
@@ -45,7 +47,7 @@ func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
 	// singleton
 	if c.txMgr == nil {
 		c.txMgr = transaction.NewTxManager(
-			0,
+			c.strgMgr,
 			c.bufSlotMgr,
 			c.LogMgr(),
 			concurrency.NewLockTable(),

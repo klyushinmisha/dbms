@@ -32,10 +32,6 @@ func NewBufferSlotManager(storage *storage.StorageManager, slots int, slotSize i
 	return &m
 }
 
-func (m *BufferSlotManager) StorageManager() *storage.StorageManager {
-	return m.storage
-}
-
 // TODO: make transaction-safe (pos lock is required at the moment)
 func (m *BufferSlotManager) Fetch(pos int64) {
 	if desc := m.storeOrWaitDesc(pos); desc != nil {
