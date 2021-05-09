@@ -2,7 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"dbms/pkg/utils"
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
@@ -15,7 +14,7 @@ var (
 
 // TODO: add links to prev and next page for linear scan ability
 type heapPageHeader struct {
-	Flags     utils.BitArray
+	Flags     BitArray
 	records   int32
 	freeSpace int32
 }
@@ -67,7 +66,7 @@ func AllocatePage(pageSize int) *HeapPage {
 func (p *HeapPage) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	hdr := struct {
-		Flags     utils.BitArray
+		Flags     BitArray
 		Records   int32
 		FreeSpace int32
 	}{p.heapPageHeader.Flags, p.heapPageHeader.records, p.heapPageHeader.freeSpace}
@@ -95,7 +94,7 @@ func (p *HeapPage) UnmarshalBinary(data []byte) error {
 		return ErrChecksum
 	}
 	hdr := struct {
-		Flags     utils.BitArray
+		Flags     BitArray
 		Records   int32
 		FreeSpace int32
 	}{}

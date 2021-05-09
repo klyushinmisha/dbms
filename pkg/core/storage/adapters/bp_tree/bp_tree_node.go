@@ -1,12 +1,12 @@
 package bp_tree
 
-import "dbms/pkg/utils"
+import "dbms/pkg/core/storage"
 
 // bool + int64 + int64 + int64 + int32
 var bpTreeNodeHeaderSize = 29
 
 type bpTreeNodeHeader struct {
-	Flags  utils.BitArray
+	Flags  storage.BitArray
 	Parent int64
 	Left   int64
 	Right  int64

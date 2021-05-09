@@ -2,7 +2,6 @@ package data
 
 import (
 	"dbms/pkg/core/storage"
-	"dbms/pkg/utils"
 	"log"
 )
 
@@ -31,7 +30,7 @@ func (dpa *dataPageAdapter) ReadRecord(n int) *record {
 func (dpa *dataPageAdapter) FindRecordByKey(key []byte) (*record, int) {
 	for n := 0; n < dpa.page.Records(); n++ {
 		foundRecord := dpa.ReadRecord(n)
-		if utils.Memcmp(key, foundRecord.Key) == 0 {
+		if memcmp(key, foundRecord.Key) == 0 {
 			return foundRecord, n
 		}
 	}
@@ -75,4 +74,22 @@ func (dpa *dataPageAdapter) WriteRecordByKey(key []byte, data []byte) error {
 	rec.Key = key
 	rec.Data = data
 	return dpa.WriteRecord(&rec)
+}
+
+func memcmp(a []byte, b []byte) int {
+	for pos := 0; pos < len(a) && pos < len(b); pos++ {
+		if a[pos] > b[pos] {
+			return 1
+		}
+		if a[pos] < b[pos] {
+			return -1
+		}
+	}
+	if len(a) > len(b) {
+		return 1
+	}
+	if len(b) > len(a) {
+		return -1
+	}
+	return 0
 }
