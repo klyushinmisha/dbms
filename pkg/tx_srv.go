@@ -1,11 +1,11 @@
 package pkg
 
 import (
+	"dbms/pkg/atomic"
 	"dbms/pkg/concurrency"
 	"dbms/pkg/transaction"
 	"log"
 	"sync"
-	"sync/atomic"
 )
 
 const helpSplash = `Commands structure:
@@ -58,18 +58,9 @@ type Result struct {
 	err   error
 }
 
-type DesctiptorFactory struct {
-	counter int64
-}
-
-func (f *DesctiptorFactory) GenerateUniqueDescriptor() int {
-	// TODO: check ranges
-	return int(atomic.AddInt64(&f.counter, 1))
-}
-
 type TxServer struct {
 	txMgr         *transaction.TransactionManager
-	descFact      DesctiptorFactory
+	descCtr       atomic.AtomicCounter
 	clientTxTable sync.Map
 }
 
@@ -80,7 +71,7 @@ func NewTxServer(txMgr *transaction.TransactionManager) *TxServer {
 }
 
 func (s *TxServer) Init() int {
-	clientDesc := s.descFact.GenerateUniqueDescriptor()
+	clientDesc := s.descCtr.Incr()
 	var newTx *transaction.Transaction
 	s.clientTxTable.Store(clientDesc, newTx)
 	return clientDesc

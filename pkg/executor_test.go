@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"dbms/pkg/atomic"
 	"dbms/pkg/concurrency"
 	"dbms/pkg/logging"
 	"dbms/pkg/storage"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 )
 
@@ -156,7 +156,7 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 			keys := 1024
 			threads := 4
 			totalTxs := threads
-			deadTxs := int32(0)
+			var deadTxsCtr atomic.AtomicCounter
 			var wg sync.WaitGroup
 			wg.Add(threads)
 			for j := 0; j < threads; j++ {
@@ -166,7 +166,7 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 						defer wg.Done()
 						if err := recover(); err == concurrency.ErrTxLockTimeout {
 							tx.Abort()
-							atomic.AddInt32(&deadTxs, 1)
+							deadTxsCtr.Incr()
 						}
 					}()
 					e := NewExecutor(tx)
@@ -177,9 +177,9 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 				}()
 			}
 			wg.Wait()
-			log.Printf("Transactions:\n\ttotal: %v\n\tdead:  %v", totalTxs, deadTxs)
+			log.Printf("Transactions:\n\ttotal: %v\n\tdead:  %v", totalTxs, deadTxsCtr.Value())
 			wg.Add(threads)
-			deadTxs = 0
+			deadTxsCtr.Init(0)
 			for j := 0; j < threads; j++ {
 				go func() {
 					tx := txMgr.InitTx(concurrency.SharedMode)
@@ -187,7 +187,7 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 						defer wg.Done()
 						if err := recover(); err == concurrency.ErrTxLockTimeout {
 							tx.Abort()
-							atomic.AddInt32(&deadTxs, 1)
+							deadTxsCtr.Incr()
 						}
 					}()
 					e := NewExecutor(tx)
@@ -203,7 +203,7 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 				}()
 			}
 			wg.Wait()
-			log.Printf("Transactions:\n\ttotal: %v\n\tdead:  %v", totalTxs, deadTxs)
+			log.Printf("Transactions:\n\ttotal: %v\n\tdead:  %v", totalTxs, deadTxsCtr.Value())
 			return nil
 		})
 	})

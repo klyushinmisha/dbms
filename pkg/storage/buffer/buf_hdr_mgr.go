@@ -2,16 +2,16 @@ package buffer
 
 import (
 	"container/list"
+	"dbms/pkg/atomic"
 	"dbms/pkg/concurrency"
 	"log"
 	"sync"
-	"sync/atomic"
 )
 
 type bufferHeader struct {
-	desc     *bufferSlotDescriptor
-	dirty    bool
-	refcount int32
+	desc   *bufferSlotDescriptor
+	dirty  bool
+	refCtr atomic.AtomicCounter
 }
 
 // add headers index to speed up lookups
@@ -47,12 +47,12 @@ func (m *bufferHeaderManager) getHdrBySlotId(slotId int) *bufferHeader {
 
 func (m *bufferHeaderManager) pin(slotId int) {
 	hdr := m.getHdrBySlotId(slotId)
-	atomic.AddInt32(&hdr.refcount, 1)
+	hdr.refCtr.Incr()
 }
 
 func (m *bufferHeaderManager) unpin(slotId int) {
 	hdr := m.getHdrBySlotId(slotId)
-	atomic.AddInt32(&hdr.refcount, -1)
+	hdr.refCtr.Decr()
 }
 
 // victim uses an optimistic LRU prune algorithm
@@ -63,9 +63,9 @@ func (m *bufferHeaderManager) victim() *bufferSlotDescriptor {
 	defer m.modLock.RUnlock()
 	for e := m.hdrs.Back(); e != nil; e = e.Prev() {
 		hdr := e.Value.(*bufferHeader)
-		if hdr.refcount == 0 {
+		if hdr.refCtr.Value() == 0 {
 			// pin
-			atomic.AddInt32(&hdr.refcount, 1)
+			hdr.refCtr.Incr()
 			return hdr.desc
 		}
 	}

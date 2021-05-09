@@ -1,13 +1,13 @@
 package transaction
 
 import (
+	"dbms/pkg/atomic"
 	"dbms/pkg/concurrency"
 	"dbms/pkg/logging"
 	"dbms/pkg/storage"
 	"dbms/pkg/storage/buffer"
 	"log"
 	"sync"
-	"sync/atomic"
 )
 
 const (
@@ -22,6 +22,7 @@ type Transaction struct {
 	lockMode int
 	status   int
 	// lockedPages is a set of pages positions
+	// TODO: use regular map
 	lockedPages sync.Map
 	txMgr       *TransactionManager
 }
@@ -31,7 +32,7 @@ func (t *Transaction) Id() int {
 }
 
 type TransactionManager struct {
-	idCounter       int64
+	idCtr           atomic.AtomicCounter
 	bufSlotMgr      *buffer.BufferSlotManager
 	logMgr          *logging.LogManager
 	sharedLockTable *concurrency.LockTable
@@ -50,12 +51,12 @@ func NewTransactionManager(
 	return txMgr
 }
 
-func (m *TransactionManager) SetIdCounter(idCounter int64) {
-	m.idCounter = idCounter
+func (m *TransactionManager) SetIdCounter(idCounter int) {
+	m.idCtr.Init(idCounter)
 }
 
 func (m *TransactionManager) InitTx(lockMode int) *Transaction {
-	return m.InitTxWithId(int(atomic.AddInt64(&m.idCounter, 1)), lockMode)
+	return m.InitTxWithId(m.idCtr.Incr(), lockMode)
 }
 
 func (m *TransactionManager) InitTxWithId(id int, lockMode int) *Transaction {

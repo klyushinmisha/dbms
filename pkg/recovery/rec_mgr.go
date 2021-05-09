@@ -19,7 +19,7 @@ func NewRecoveryManager(logMgr *logging.LogManager) *RecoveryManager {
 }
 
 func (m *RecoveryManager) RollForward(txMgr *transaction.TransactionManager) {
-	var idCounter int64
+	var maxTxId int
 	txs := make(map[int]*transaction.Transaction)
 	logsIter := m.logMgr.Iterator()
 	for {
@@ -27,8 +27,8 @@ func (m *RecoveryManager) RollForward(txMgr *transaction.TransactionManager) {
 		if r == nil {
 			break
 		}
-		if r.TxId() > int(idCounter) {
-			idCounter = int64(r.TxId())
+		if r.TxId() > maxTxId {
+			maxTxId = r.TxId()
 		}
 		tx, found := txs[r.TxId()]
 		if !found {
@@ -57,5 +57,5 @@ func (m *RecoveryManager) RollForward(txMgr *transaction.TransactionManager) {
 	for _, tx := range txs {
 		tx.Abort()
 	}
-	txMgr.SetIdCounter(idCounter)
+	txMgr.SetIdCounter(maxTxId)
 }

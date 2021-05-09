@@ -82,7 +82,7 @@ func (m *BufferSlotManager) Deallocate(pos int64) {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.Lock(concurrency.ExclusiveMode)
 	defer desc.lock.Unlock()
-	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); hdr.refcount != 0 {
+	if hdr := m.bufHdrMgr.getHdrBySlotId(desc.slotId); hdr.refCtr.Value() != 0 {
 		return
 	}
 	m.bufHdrMgr.deallocateSlot(desc.slotId)
