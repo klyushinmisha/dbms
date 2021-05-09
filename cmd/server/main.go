@@ -1,8 +1,9 @@
 package main
 
 import (
-	"dbms/pkg"
 	"dbms/pkg/config"
+	"dbms/pkg/core"
+	"dbms/pkg/server"
 	"log"
 	"os"
 )
@@ -39,8 +40,8 @@ func main() {
 	}
 	defer logFile.Close()
 
-	coreCfgr := pkg.NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg(), dataFile, logFile)
-	srvCfgr := pkg.NewDefaultDBMSServerConfigurator(cfgLdr.SrvCfg(), coreCfgr)
+	coreCfgr := core.NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg(), dataFile, logFile)
+	srvCfgr := server.NewDefaultDBMSServerConfigurator(cfgLdr.SrvCfg(), coreCfgr)
 
 	log.Print(serverSplash)
 	// init storage before recovery attempt
