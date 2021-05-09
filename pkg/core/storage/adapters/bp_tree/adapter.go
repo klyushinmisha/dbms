@@ -1,7 +1,6 @@
 package bp_tree
 
 import (
-	"dbms/pkg/core/storage"
 	"dbms/pkg/core/transaction"
 )
 
@@ -22,14 +21,14 @@ func (ba *BPTreeAdapter) ReadNodeAtPos(pos int64) *BPTreeNode {
 }
 
 func (ba *BPTreeAdapter) WriteNodeAtPos(node *BPTreeNode, pos int64) {
-	page := storage.AllocatePage(ba.tx.StorageManager().PageSize())
+	page := ba.tx.AllocatePage()
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
 	ba.tx.WritePageAtPos(page, pos)
 }
 
 func (ba *BPTreeAdapter) WriteNode(node *BPTreeNode) int64 {
-	page := storage.AllocatePage(ba.tx.StorageManager().PageSize())
+	page := ba.tx.AllocatePage()
 	bpa := newBPTreePageAdapter(page)
 	bpa.WriteNode(node)
 	return ba.tx.WritePage(page)

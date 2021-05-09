@@ -22,7 +22,7 @@ func TestTxManager_InitUpdateCommit(t *testing.T) {
 			threads := 16
 			bufferCap := 32
 			buf := buffer.NewBufferSlotManager(
-				storage.NewStorageManager(dataFile, Page8K),
+				storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(Page8K)),
 				bufferCap,
 				Page8K,
 			)
@@ -88,7 +88,7 @@ func TestTxManager_InitUpdateAbort(t *testing.T) {
 			threads := 16
 			bufferCap := 32
 			buf := buffer.NewBufferSlotManager(
-				storage.NewStorageManager(dataFile, Page8K),
+				storage.NewStorageManager(dataFile),
 				bufferCap,
 				Page8K,
 			)

@@ -13,7 +13,7 @@ import (
 
 func TestBuffer_FetchFlush(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
-		strg_mgr := storage.NewStorageManager(dataFile, 8192)
+		strg_mgr := storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(8192))
 		tab := concurrency.NewLockTable()
 		bufferCap := 32
 		buf := NewBufferSlotManager(strg_mgr, bufferCap, 8192)
@@ -77,7 +77,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 
 func TestBuffer_FetchFlushDeallocate(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
-		strg_mgr := storage.NewStorageManager(dataFile, 8192)
+		strg_mgr := storage.NewStorageManager(dataFile)
 		tab := concurrency.NewLockTable()
 		bufferCap := 32
 		buf := NewBufferSlotManager(strg_mgr, bufferCap, 8192)

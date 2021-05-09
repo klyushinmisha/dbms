@@ -55,14 +55,6 @@ func GetHeapPageCapacity(pageSize int) int {
 	return pageSize - heapPageHeaderSize - heapPageChecksumSize
 }
 
-func AllocatePage(pageSize int) *HeapPage {
-	var page HeapPage
-	page.records = 0
-	page.Data = make([]byte, GetHeapPageCapacity(pageSize))
-	page.freeSpace = int32(len(page.Data))
-	return &page
-}
-
 func (p *HeapPage) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 	hdr := struct {
@@ -176,4 +168,22 @@ func (p *HeapPage) writePointer(ptrN int, ptr int32) {
 	if writeErr := binary.Write(writer, binary.LittleEndian, ptr); writeErr != nil {
 		log.Panic(writeErr)
 	}
+}
+
+type HeapPageAllocator struct {
+	pageSize int
+}
+
+func NewHeapPageAllocator(pageSize int) *HeapPageAllocator {
+	a := new(HeapPageAllocator)
+	a.pageSize = pageSize
+	return a
+}
+
+func (a *HeapPageAllocator) AllocatePage() *HeapPage {
+	var page HeapPage
+	page.records = 0
+	page.Data = make([]byte, GetHeapPageCapacity(a.pageSize))
+	page.freeSpace = int32(len(page.Data))
+	return &page
 }

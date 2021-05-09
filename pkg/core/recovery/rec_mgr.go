@@ -3,7 +3,6 @@ package recovery
 import (
 	"dbms/pkg/core/concurrency"
 	"dbms/pkg/core/logging"
-	"dbms/pkg/core/storage"
 	"dbms/pkg/core/transaction"
 	"log"
 )
@@ -37,7 +36,7 @@ func (m *RecoveryManager) RollForward(txMgr *transaction.TxManager) {
 		}
 		switch r.Type() {
 		case logging.UpdateRecord:
-			page := storage.AllocatePage(len(r.Snapshot))
+			page := tx.AllocatePage()
 			if err := page.UnmarshalBinary(r.Snapshot); err != nil {
 				log.Panic(err)
 			}

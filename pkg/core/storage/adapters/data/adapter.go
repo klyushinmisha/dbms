@@ -1,7 +1,6 @@
 package data
 
 import (
-	"dbms/pkg/core/storage"
 	"dbms/pkg/core/transaction"
 	"errors"
 )
@@ -46,7 +45,7 @@ func (da *DataAdapter) Write(key string, data []byte) (int64, error) {
 	rec.Key = []byte(key)
 	rec.Data = data
 	// TODO: write at free page
-	page := storage.AllocatePage(da.tx.StorageManager().PageSize())
+	page := da.tx.AllocatePage()
 	dpa := newDataPageAdapter(page)
 	if writeErr := dpa.WriteRecordByKey([]byte(key), data); writeErr != nil {
 		return -1, writeErr

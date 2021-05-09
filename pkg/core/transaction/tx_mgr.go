@@ -36,6 +36,7 @@ type TxManager struct {
 	bufSlotMgr      *buffer.BufferSlotManager
 	logMgr          *logging.LogManager
 	sharedLockTable *concurrency.LockTable
+	a               *storage.HeapPageAllocator
 }
 
 func NewTxManager(
@@ -43,11 +44,13 @@ func NewTxManager(
 	bufSlotMgr *buffer.BufferSlotManager,
 	logMgr *logging.LogManager,
 	sharedLockTable *concurrency.LockTable,
+	a *storage.HeapPageAllocator,
 ) *TxManager {
 	txMgr := new(TxManager)
 	txMgr.bufSlotMgr = bufSlotMgr
 	txMgr.logMgr = logMgr
 	txMgr.sharedLockTable = sharedLockTable
+	txMgr.a = a
 	return txMgr
 }
 
@@ -90,6 +93,10 @@ func (tx *Tx) DowngradeLocks() {
 		tx.txMgr.sharedLockTable.DowngradeLock(pos.(int64))
 		return true
 	})
+}
+
+func (tx *Tx) AllocatePage() *storage.HeapPage {
+	return tx.txMgr.a.AllocatePage()
 }
 
 func (tx *Tx) ReadPageAtPos(pos int64) *storage.HeapPage {
@@ -154,6 +161,7 @@ func (tx *Tx) Abort() {
 	tx.status = aborted
 }
 
+// TODO: move logic to some injectable interface inplemetation
 func (tx *Tx) StorageManager() *storage.StorageManager {
 	return tx.txMgr.bufSlotMgr.StorageManager()
 }

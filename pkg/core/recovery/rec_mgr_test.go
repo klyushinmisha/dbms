@@ -21,7 +21,7 @@ func TestRecoveryManager_LogRecovery(t *testing.T) {
 			page := storage.AllocatePage(pageSize)
 			recMgr := NewRecoveryManager(logMgr)
 			buf := buffer.NewBufferSlotManager(
-				storage.NewStorageManager(dataFile, pageSize),
+				storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(pageSize)),
 				128,
 				pageSize,
 			)

@@ -12,20 +12,18 @@ type StorageManager struct {
 	// during seeking/writing/reading
 	fileLock sync.Mutex
 	// file storage for heap pages
-	file *os.File
-	// pageSize configures total heap page size (with headers, checksum and etc.)
-	pageSize   int
+	file       *os.File
+	a          *HeapPageAllocator
 	emptyBlock []byte
 }
 
 func NewStorageManager(
 	file *os.File,
-	pageSize int,
+	a *HeapPageAllocator,
 ) *StorageManager {
 	var m StorageManager
 	m.file = file
-	m.pageSize = pageSize
-	block, err := AllocatePage(pageSize).MarshalBinary()
+	block, err := a.AllocatePage().MarshalBinary()
 	if err != nil {
 		log.Panic(err)
 	}
@@ -35,10 +33,6 @@ func NewStorageManager(
 
 func (m *StorageManager) Empty() bool {
 	return m.Size() == 0
-}
-
-func (m *StorageManager) PageSize() int {
-	return m.pageSize
 }
 
 func (m *StorageManager) Size() int64 {

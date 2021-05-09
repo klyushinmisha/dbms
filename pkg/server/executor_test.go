@@ -22,7 +22,7 @@ const Page8K = 8192
 func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TxManager {
 	bufferCap := 8192
 	buf := buffer.NewBufferSlotManager(
-		storage.NewStorageManager(dataFile, Page8K),
+		storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(Page8K)),
 		bufferCap,
 		Page8K,
 	)

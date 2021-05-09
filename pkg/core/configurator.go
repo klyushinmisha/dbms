@@ -33,7 +33,7 @@ func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig, dataFile *os.File, l
 	c.dataFile = dataFile
 	c.logFile = logFile
 	c.bufSlotMgr = buffer.NewBufferSlotManager(
-		storage.NewStorageManager(dataFile, cfg.PageSize),
+		storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(c.cfg.PageSize)),
 		cfg.BufCap,
 		cfg.PageSize,
 	)
@@ -49,6 +49,7 @@ func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
 			c.bufSlotMgr,
 			c.LogMgr(),
 			concurrency.NewLockTable(),
+			storage.NewHeapPageAllocator(c.cfg.PageSize),
 		)
 	}
 	return c.txMgr
