@@ -2,8 +2,8 @@ package data
 
 import (
 	"dbms/pkg/cache/lru_cache"
-	"dbms/pkg/concurrency"
-	"dbms/pkg/storage"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/storage"
 	"dbms/pkg/utils"
 	"log"
 	"os"

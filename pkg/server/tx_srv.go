@@ -2,8 +2,8 @@ package server
 
 import (
 	"dbms/pkg/atomic"
-	"dbms/pkg/concurrency"
-	"dbms/pkg/transaction"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/transaction"
 	"log"
 	"sync"
 )

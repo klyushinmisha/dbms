@@ -1,7 +1,7 @@
 package bp_tree
 
 import (
-	"dbms/pkg/storage/adapters/bp_tree"
+	"dbms/pkg/core/storage/adapters/bp_tree"
 )
 
 type bpTreeReaderWriter struct {

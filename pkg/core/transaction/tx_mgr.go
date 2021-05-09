@@ -2,10 +2,10 @@ package transaction
 
 import (
 	"dbms/pkg/atomic"
-	"dbms/pkg/concurrency"
-	"dbms/pkg/logging"
-	"dbms/pkg/storage"
-	"dbms/pkg/storage/buffer"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/logging"
+	"dbms/pkg/core/storage"
+	"dbms/pkg/core/storage/buffer"
 	"log"
 	"sync"
 )

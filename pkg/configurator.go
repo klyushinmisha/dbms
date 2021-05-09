@@ -1,14 +1,14 @@
 package pkg
 
 import (
-	"dbms/pkg/concurrency"
+	"dbms/pkg/core/concurrency"
 	"dbms/pkg/config"
-	"dbms/pkg/logging"
-	"dbms/pkg/recovery"
+	"dbms/pkg/core/logging"
+	"dbms/pkg/core/recovery"
 	"dbms/pkg/server"
-	"dbms/pkg/storage"
-	"dbms/pkg/storage/buffer"
-	"dbms/pkg/transaction"
+	"dbms/pkg/core/storage"
+	"dbms/pkg/core/storage/buffer"
+	"dbms/pkg/core/transaction"
 	"os"
 )
 

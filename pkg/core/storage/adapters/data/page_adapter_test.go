@@ -1,7 +1,7 @@
 package data
 
 import (
-	"dbms/pkg/storage"
+	"dbms/pkg/core/storage"
 	"log"
 	"testing"
 )

@@ -1,10 +1,10 @@
 package recovery
 
 import (
-	"dbms/pkg/concurrency"
-	"dbms/pkg/logging"
-	"dbms/pkg/storage"
-	"dbms/pkg/transaction"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/logging"
+	"dbms/pkg/core/storage"
+	"dbms/pkg/core/transaction"
 	"log"
 )
 

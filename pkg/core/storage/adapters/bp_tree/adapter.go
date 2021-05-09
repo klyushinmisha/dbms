@@ -1,8 +1,8 @@
 package bp_tree
 
 import (
-	"dbms/pkg/storage"
-	"dbms/pkg/transaction"
+	"dbms/pkg/core/storage"
+	"dbms/pkg/core/transaction"
 )
 
 type BPTreeAdapter struct {

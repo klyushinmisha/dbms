@@ -2,11 +2,11 @@ package server
 
 import (
 	"dbms/pkg/atomic"
-	"dbms/pkg/concurrency"
-	"dbms/pkg/logging"
-	"dbms/pkg/storage"
-	"dbms/pkg/storage/buffer"
-	"dbms/pkg/transaction"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/logging"
+	"dbms/pkg/core/storage"
+	"dbms/pkg/core/storage/buffer"
+	"dbms/pkg/core/transaction"
 	"dbms/pkg/utils"
 	"fmt"
 	"github.com/stretchr/testify/assert"

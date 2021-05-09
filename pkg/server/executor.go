@@ -1,10 +1,10 @@
 package server
 
 import (
-	"dbms/pkg/access/bp_tree"
-	bpAdapter "dbms/pkg/storage/adapters/bp_tree"
-	dataAdapter "dbms/pkg/storage/adapters/data"
-	"dbms/pkg/transaction"
+	"dbms/pkg/core/access/bp_tree"
+	bpAdapter "dbms/pkg/core/storage/adapters/bp_tree"
+	dataAdapter "dbms/pkg/core/storage/adapters/data"
+	"dbms/pkg/core/transaction"
 	"log"
 )
 

@@ -1,8 +1,8 @@
 package buffer
 
 import (
-	"dbms/pkg/concurrency"
-	"dbms/pkg/storage"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/storage"
 	"dbms/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"log"

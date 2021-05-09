@@ -1,7 +1,7 @@
 package bp_tree
 
 import (
-	"dbms/pkg/storage"
+	"dbms/pkg/core/storage"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

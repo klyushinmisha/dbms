@@ -1,12 +1,12 @@
 package bp_tree
 
 import (
-	"dbms/pkg/concurrency"
-	"dbms/pkg/logging"
-	"dbms/pkg/storage"
-	"dbms/pkg/storage/adapters/bp_tree"
-	"dbms/pkg/storage/buffer"
-	"dbms/pkg/transaction"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/logging"
+	"dbms/pkg/core/storage"
+	"dbms/pkg/core/storage/adapters/bp_tree"
+	"dbms/pkg/core/storage/buffer"
+	"dbms/pkg/core/transaction"
 	"dbms/pkg/utils"
 	"log"
 	"os"

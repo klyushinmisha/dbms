@@ -3,7 +3,7 @@ package buffer
 import (
 	"container/list"
 	"dbms/pkg/atomic"
-	"dbms/pkg/concurrency"
+	"dbms/pkg/core/concurrency"
 	"log"
 	"sync"
 )

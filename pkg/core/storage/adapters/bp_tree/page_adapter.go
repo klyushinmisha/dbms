@@ -2,7 +2,7 @@ package bp_tree
 
 import (
 	"bytes"
-	"dbms/pkg/storage"
+	"dbms/pkg/core/storage"
 	"encoding/binary"
 	"log"
 )

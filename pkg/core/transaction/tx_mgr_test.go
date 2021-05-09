@@ -1,10 +1,10 @@
 package transaction
 
 import (
-	"dbms/pkg/concurrency"
-	"dbms/pkg/logging"
-	"dbms/pkg/storage"
-	"dbms/pkg/storage/buffer"
+	"dbms/pkg/core/concurrency"
+	"dbms/pkg/core/logging"
+	"dbms/pkg/core/storage"
+	"dbms/pkg/core/storage/buffer"
 	"dbms/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"log"
