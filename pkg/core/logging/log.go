@@ -3,9 +3,7 @@ package logging
 import (
 	"bytes"
 	"encoding/binary"
-	"io"
 	"log"
-	"os"
 	"sync"
 )
 
@@ -26,8 +24,9 @@ type LogRecord struct {
 	recType uint8
 	txId    int64
 	// snapshot specific fields
-	Pos      int64
-	Snapshot []byte
+	Pos         int64
+	snapshotLen int64
+	Snapshot    []byte
 }
 
 func (r *LogRecord) TxId() int {
@@ -53,10 +52,27 @@ func (r *LogRecord) MarshalBinary() ([]byte, error) {
 	if writeErr := binary.Write(buf, binary.LittleEndian, r.Pos); writeErr != nil {
 		return nil, writeErr
 	}
+	if writeErr := binary.Write(buf, binary.LittleEndian, r.snapshotLen); writeErr != nil {
+		return nil, writeErr
+	}
 	if _, writeErr := buf.Write(r.Snapshot); writeErr != nil {
 		return nil, writeErr
 	}
 	return buf.Bytes(), nil
+}
+
+type SegmentIterator struct {
+	segments []*Segment
+	curIdx   int
+}
+
+func (i *SegmentIterator) Next() *Segment {
+	if i.curIdx == len(i.segments) {
+		return nil
+	}
+	seg := i.segments[i.curIdx]
+	i.curIdx++
+	return seg
 }
 
 // TODO: add 'flushed' records; skip txId processing if already flushed
@@ -70,31 +86,24 @@ const (
 )
 
 type LogManager struct {
-	pageSize int
-	fileLock sync.Mutex
-	file     *os.File
+	logLock sync.Mutex
+	segMgr  *SegmentManager
 }
 
-func NewLogManager(file *os.File, pageSize int) *LogManager {
+func NewLogManager(segMgr *SegmentManager) *LogManager {
 	m := new(LogManager)
-	m.file = file
-	m.pageSize = pageSize
+	m.segMgr = segMgr
 	return m
 }
 
-func (m *LogManager) log(r *LogRecord) {
+func (m *LogManager) log(txId int, r *LogRecord) {
+	m.logLock.Lock()
+	defer m.logLock.Unlock()
 	data, err := r.MarshalBinary()
 	if err != nil {
 		log.Panic(err)
 	}
-	m.fileLock.Lock()
-	defer m.fileLock.Unlock()
-	if _, seekErr := m.file.Seek(0, io.SeekEnd); seekErr != nil {
-		log.Panic(seekErr)
-	}
-	if _, err = m.file.Write(data); err != nil {
-		log.Panic(err)
-	}
+	m.segMgr.Log(txId, data)
 }
 
 func (m *LogManager) LogSnapshot(txId int, pos int64, snapshotData []byte) {
@@ -102,82 +111,39 @@ func (m *LogManager) LogSnapshot(txId int, pos int64, snapshotData []byte) {
 	rec.recType = UpdateRecord
 	rec.txId = int64(txId)
 	rec.Pos = pos
+	rec.snapshotLen = int64(len(snapshotData))
 	rec.Snapshot = snapshotData
-	m.log(rec)
+	m.log(txId, rec)
 }
 
 func (m *LogManager) LogCommit(txId int) {
 	rec := new(LogRecord)
 	rec.recType = CommitRecord
 	rec.txId = int64(txId)
-	m.log(rec)
+	m.log(txId, rec)
 }
 
 func (m *LogManager) LogAbort(txId int) {
 	rec := new(LogRecord)
 	rec.recType = AbortRecord
 	rec.txId = int64(txId)
-	m.log(rec)
+	m.log(txId, rec)
 }
 
 func (m *LogManager) Flush() {
-	m.fileLock.Lock()
-	defer m.fileLock.Unlock()
-	// durability aspect;
-	// ensures all fs caches are flushed on disk
-	if err := m.file.Sync(); err != nil {
-		log.Panic(err)
-	}
+	m.logLock.Lock()
+	defer m.logLock.Unlock()
+	m.segMgr.Flush()
 }
 
-func (m *LogManager) Iterator() func() *LogRecord {
-	m.fileLock.Lock()
-	if _, seekErr := m.file.Seek(0, io.SeekStart); seekErr != nil {
-		log.Panic(seekErr)
-	}
-	stopIter := false
-	return func() *LogRecord {
-		if stopIter || m.size() == 0 {
-			return nil
-		}
-		rec := m.read()
-		if rec == nil {
-			stopIter = true
-			m.fileLock.Unlock()
-		}
-		return rec
-	}
+func (m *LogManager) Release(txId int) {
+	m.logLock.Lock()
+	defer m.logLock.Unlock()
+	m.segMgr.Unpin(txId)
 }
 
-func (m *LogManager) read() *LogRecord {
-	r := new(LogRecord)
-	if readErr := binary.Read(m.file, binary.LittleEndian, &r.recType); readErr != nil {
-		if readErr == io.EOF {
-			return nil
-		}
-		log.Panic(readErr)
-	}
-	if readErr := binary.Read(m.file, binary.LittleEndian, &r.txId); readErr != nil {
-		log.Panic(readErr)
-	}
-	if r.recType != UpdateRecord {
-		return r
-	}
-	// extract snapshot specific fields
-	if readErr := binary.Read(m.file, binary.LittleEndian, &r.Pos); readErr != nil {
-		log.Panic(readErr)
-	}
-	r.Snapshot = make([]byte, m.pageSize, m.pageSize)
-	if _, err := m.file.Read(r.Snapshot); err != nil {
-		log.Panic(err)
-	}
-	return r
-}
-
-func (m *LogManager) size() int64 {
-	info, statErr := m.file.Stat()
-	if statErr != nil {
-		log.Panicln(statErr)
-	}
-	return info.Size()
+func (m *LogManager) SegmentIterator() *SegmentIterator {
+	i := new(SegmentIterator)
+	i.segments = m.segMgr.segments
+	return i
 }

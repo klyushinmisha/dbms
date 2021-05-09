@@ -9,6 +9,7 @@ type CoreConfig struct {
 	PageSize  int    `json:"pageSize"`
 	BufCap    int    `json:"bufferCapacity"`
 	FilesPath string `json:"filesPath"`
+	LogSegCap int    `json:"logSegmentCapacity"`
 }
 
 func (c *CoreConfig) absFilesPath() string {
@@ -24,5 +25,5 @@ func (c *CoreConfig) DataPath() string {
 }
 
 func (c *CoreConfig) LogPath() string {
-	return filepath.Join(c.absFilesPath(), "log.bin")
+	return filepath.Join(c.absFilesPath(), "log")
 }

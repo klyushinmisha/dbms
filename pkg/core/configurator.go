@@ -17,22 +17,21 @@ type DBMSCoreConfigurator interface {
 	RecMgr() *recovery.RecoveryManager
 }
 
-// dataFile and logFile must be unique per configuration to prevent multiple access to same files
+// dataFile must be unique per configuration to prevent multiple access to same files
 type DefaultDBMSCoreConfigurator struct {
 	cfg        *config.CoreConfig
 	dataFile   *os.File
-	logFile    *os.File
 	strgMgr    *storage.StorageManager
 	bufSlotMgr *buffer.BufferSlotManager
 	txMgr      *transaction.TxManager
+	segMgr     *logging.SegmentManager
 	logMgr     *logging.LogManager
 }
 
-func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig, dataFile *os.File, logFile *os.File) *DefaultDBMSCoreConfigurator {
+func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig, dataFile *os.File) *DefaultDBMSCoreConfigurator {
 	c := new(DefaultDBMSCoreConfigurator)
 	c.cfg = cfg
 	c.dataFile = dataFile
-	c.logFile = logFile
 	c.strgMgr = storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(c.cfg.PageSize))
 	c.bufSlotMgr = buffer.NewBufferSlotManager(
 		c.strgMgr,
@@ -57,10 +56,18 @@ func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
 	return c.txMgr
 }
 
+func (c *DefaultDBMSCoreConfigurator) SegMgr() *logging.SegmentManager {
+	// singleton
+	if c.segMgr == nil {
+		c.segMgr = logging.NewSegmentManager(c.cfg.LogPath(), c.cfg.LogSegCap)
+	}
+	return c.segMgr
+}
+
 func (c *DefaultDBMSCoreConfigurator) LogMgr() *logging.LogManager {
 	// singleton
 	if c.logMgr == nil {
-		c.logMgr = logging.NewLogManager(c.logFile, c.cfg.PageSize)
+		c.logMgr = logging.NewLogManager(c.SegMgr())
 	}
 	return c.logMgr
 }
