@@ -31,6 +31,112 @@ func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
 	return &tree
 }
 
+func (t *BPTree) Init() {
+	if t.rw.Empty() {
+		hdr := createDefaultNode(t.t)
+		t.rw.AppendNodeToStorage(hdr)
+		root := createDefaultNode(t.t)
+		root.Leaf = true
+		rootPos := t.rw.AppendNodeToStorage(root)
+		hdr.Pointers[0] = rootPos
+		t.rw.WriteNodeToStorage(hdr, 0)
+	}
+}
+
+func (t *BPTree) Find(key string) (int64, error) {
+	t.deleteLock.RLock()
+	defer t.deleteLock.RUnlock()
+	pos := t.findLeafPos(key)
+	leaf := t.rw.ReadNodeFromStorage(pos)
+	keyPos := leaf.findKeyPos(key)
+	if keyPos == -1 {
+		return 0, ErrKeyNotFound
+	}
+	return leaf.Pointers[keyPos], nil
+}
+
+func (t *BPTree) Insert(key string, ptr int64) {
+	t.deleteLock.RLock()
+	defer t.deleteLock.RUnlock()
+	t.insertLock.Lock()
+	defer t.insertLock.Unlock()
+	pos := t.findLeafPos(key)
+	leaf := t.rw.ReadNodeFromStorage(pos)
+	// find write position in leaf
+	keyPos := 0
+	for ; keyPos < leaf.Size; keyPos++ {
+		if key == leaf.Keys[keyPos] {
+			// check if key exists; only change addr value
+			leaf.Pointers[keyPos] = ptr
+			t.rw.WriteNodeToStorage(leaf, pos)
+			return
+		} else if key < leaf.Keys[keyPos] {
+			break
+		}
+	}
+	leaf.putKey(keyPos, key, ptr)
+	t.rw.WriteNodeToStorage(leaf, pos)
+	// balance t
+	if leaf.Size == 2*t.t {
+		t.split(leaf, pos)
+	}
+}
+
+func (t *BPTree) Delete(key string) (int64, error) {
+	t.deleteLock.Lock()
+	defer t.deleteLock.Unlock()
+	pos := t.findLeafPos(key)
+	leaf := t.rw.ReadNodeFromStorage(pos)
+	keyPos := leaf.findKeyPos(key)
+	if keyPos == -1 {
+		return -1, ErrKeyNotFound
+	}
+	delPtr := leaf.Pointers[keyPos]
+	leaf.popKey(keyPos)
+	t.rw.WriteNodeToStorage(leaf, pos)
+	t.updatePathToRoot(pos)
+	if leaf.Size >= t.t-1 {
+		return delPtr, nil
+	}
+	var left *BPTreeNode
+	var right *BPTreeNode
+	if leaf.Left != -1 {
+		left = t.rw.ReadNodeFromStorage(leaf.Left)
+	}
+	if leaf.Right != -1 {
+		right = t.rw.ReadNodeFromStorage(leaf.Right)
+	}
+	if left != nil && left.Size > t.t-1 {
+		t.shiftKeysRight(left, leaf)
+		t.rw.WriteNodeToStorage(left, leaf.Left)
+		t.rw.WriteNodeToStorage(leaf, pos)
+		t.updatePathToRoot(pos)
+	} else if right != nil && right.Size > t.t-1 {
+		t.shiftKeysLeft(leaf, right)
+		t.rw.WriteNodeToStorage(right, leaf.Right)
+		t.rw.WriteNodeToStorage(leaf, pos)
+		t.updatePathToRoot(pos)
+		t.updatePathToRoot(leaf.Right)
+	} else {
+		if left != nil {
+			t.mergeNodes(left, leaf)
+			t.rw.WriteNodeToStorage(left, leaf.Left)
+			t.unlinkNode(leaf)
+			t.updatePathToRoot(pos)
+			t.rw.ReleaseNodeInStorage(pos)
+			t.deleteInternal(leaf.Parent, leaf.Keys[0], left.Parent != leaf.Parent)
+		} else if right != nil {
+			t.mergeNodes(leaf, right)
+			t.rw.WriteNodeToStorage(leaf, pos)
+			t.unlinkNode(right)
+			t.updatePathToRoot(pos)
+			t.rw.ReleaseNodeInStorage(leaf.Right)
+			t.deleteInternal(leaf.Parent, right.Keys[0], false)
+		}
+	}
+	return delPtr, nil
+}
+
 func (t *BPTree) findLeafPos(key string) int64 {
 	var node *BPTreeNode
 	hdr := t.rw.ReadNodeFromStorage(0)
@@ -61,22 +167,6 @@ func (t *BPTree) findLeafPos(key string) int64 {
 	return pos
 }
 
-func (t *BPTree) Find(key string) (int64, error) {
-	t.deleteLock.RLock()
-	defer t.deleteLock.RUnlock()
-	pos := t.findLeafPos(key)
-	leaf := t.rw.ReadNodeFromStorage(pos)
-	keyPos := leaf.findKeyPos(key)
-	if keyPos == -1 {
-		return 0, ErrKeyNotFound
-	}
-	return leaf.Pointers[keyPos], nil
-}
-
-// TODO: make lock-free
-// tree can be split in concurrent mode: no nodes deleted;
-// if key is not present in current node (as expected before split iteration), then check right block (it'll be there);
-// so Delete lock must be exclusive per interface method call, Find/Insert lock must be exclusive per iteration
 func (t *BPTree) split(node *BPTreeNode, pos int64) {
 	hdr := t.rw.ReadNodeFromStorage(0)
 	for {
@@ -149,45 +239,6 @@ func (t *BPTree) split(node *BPTreeNode, pos int64) {
 		if !mustContinue {
 			break
 		}
-	}
-}
-
-func (t *BPTree) Insert(key string, ptr int64) {
-	t.deleteLock.RLock()
-	defer t.deleteLock.RUnlock()
-	t.insertLock.Lock()
-	defer t.insertLock.Unlock()
-	pos := t.findLeafPos(key)
-	leaf := t.rw.ReadNodeFromStorage(pos)
-	// find write position in leaf
-	keyPos := 0
-	for ; keyPos < leaf.Size; keyPos++ {
-		if key == leaf.Keys[keyPos] {
-			// check if key exists; only change addr value
-			leaf.Pointers[keyPos] = ptr
-			t.rw.WriteNodeToStorage(leaf, pos)
-			return
-		} else if key < leaf.Keys[keyPos] {
-			break
-		}
-	}
-	leaf.putKey(keyPos, key, ptr)
-	t.rw.WriteNodeToStorage(leaf, pos)
-	// balance t
-	if leaf.Size == 2*t.t {
-		t.split(leaf, pos)
-	}
-}
-
-func (t *BPTree) Init() {
-	if t.rw.Empty() {
-		hdr := createDefaultNode(t.t)
-		t.rw.AppendNodeToStorage(hdr)
-		root := createDefaultNode(t.t)
-		root.Leaf = true
-		rootPos := t.rw.AppendNodeToStorage(root)
-		hdr.Pointers[0] = rootPos
-		t.rw.WriteNodeToStorage(hdr, 0)
 	}
 }
 
@@ -390,59 +441,4 @@ func (t *BPTree) deleteInternal(pos int64, key string, removeFirst bool) {
 			}
 		}
 	}
-}
-
-func (t *BPTree) Delete(key string) (int64, error) {
-	t.deleteLock.Lock()
-	defer t.deleteLock.Unlock()
-	pos := t.findLeafPos(key)
-	leaf := t.rw.ReadNodeFromStorage(pos)
-	keyPos := leaf.findKeyPos(key)
-	if keyPos == -1 {
-		return -1, ErrKeyNotFound
-	}
-	delPtr := leaf.Pointers[keyPos]
-	leaf.popKey(keyPos)
-	t.rw.WriteNodeToStorage(leaf, pos)
-	t.updatePathToRoot(pos)
-	if leaf.Size >= t.t-1 {
-		return delPtr, nil
-	}
-	var left *BPTreeNode
-	var right *BPTreeNode
-	if leaf.Left != -1 {
-		left = t.rw.ReadNodeFromStorage(leaf.Left)
-	}
-	if leaf.Right != -1 {
-		right = t.rw.ReadNodeFromStorage(leaf.Right)
-	}
-	if left != nil && left.Size > t.t-1 {
-		t.shiftKeysRight(left, leaf)
-		t.rw.WriteNodeToStorage(left, leaf.Left)
-		t.rw.WriteNodeToStorage(leaf, pos)
-		t.updatePathToRoot(pos)
-	} else if right != nil && right.Size > t.t-1 {
-		t.shiftKeysLeft(leaf, right)
-		t.rw.WriteNodeToStorage(right, leaf.Right)
-		t.rw.WriteNodeToStorage(leaf, pos)
-		t.updatePathToRoot(pos)
-		t.updatePathToRoot(leaf.Right)
-	} else {
-		if left != nil {
-			t.mergeNodes(left, leaf)
-			t.rw.WriteNodeToStorage(left, leaf.Left)
-			t.unlinkNode(leaf)
-			t.updatePathToRoot(pos)
-			t.rw.ReleaseNodeInStorage(pos)
-			t.deleteInternal(leaf.Parent, leaf.Keys[0], left.Parent != leaf.Parent)
-		} else if right != nil {
-			t.mergeNodes(leaf, right)
-			t.rw.WriteNodeToStorage(leaf, pos)
-			t.unlinkNode(right)
-			t.updatePathToRoot(pos)
-			t.rw.ReleaseNodeInStorage(leaf.Right)
-			t.deleteInternal(leaf.Parent, right.Keys[0], false)
-		}
-	}
-	return delPtr, nil
 }
