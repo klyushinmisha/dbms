@@ -163,7 +163,6 @@ func (tx *Tx) Abort() {
 	tx.status = aborted
 }
 
-// TODO: move logic to some injectable interface inplemetation
-func (tx *Tx) StorageManager() *storage.StorageManager {
-	return tx.txMgr.strgMgr
+func (tx *Tx) NoDataFound() bool {
+	return tx.txMgr.strgMgr.Empty()
 }

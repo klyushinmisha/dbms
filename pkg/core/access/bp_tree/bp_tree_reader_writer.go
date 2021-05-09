@@ -57,6 +57,6 @@ func (rw *bpTreeReaderWriter) ReleaseNodeInStorage(pos int64) {
 	// rw.ba.ReleaseNode(pos)
 }
 
-func (rw *bpTreeReaderWriter) Empty() bool {
-	return rw.ba.Empty()
+func (rw *bpTreeReaderWriter) NoDataFound() bool {
+	return rw.ba.NoDataFound()
 }

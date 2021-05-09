@@ -32,7 +32,7 @@ func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
 }
 
 func (t *BPTree) Init() {
-	if t.rw.Empty() {
+	if t.rw.NoDataFound() {
 		hdr := createDefaultNode(t.t)
 		t.rw.AppendNodeToStorage(hdr)
 		root := createDefaultNode(t.t)

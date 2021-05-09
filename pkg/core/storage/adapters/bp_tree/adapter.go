@@ -34,6 +34,6 @@ func (ba *BPTreeAdapter) WriteNode(node *BPTreeNode) int64 {
 	return ba.tx.WritePage(page)
 }
 
-func (ba *BPTreeAdapter) Empty() bool {
-	return ba.tx.StorageManager().Empty()
+func (ba *BPTreeAdapter) NoDataFound() bool {
+	return ba.tx.NoDataFound()
 }
