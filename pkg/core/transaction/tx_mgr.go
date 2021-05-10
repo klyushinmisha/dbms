@@ -86,7 +86,6 @@ func (tx *Tx) fetchAndLockPage(pos int64) {
 	tx.bufSlotMgr.Fetch(pos)
 	tx.bufSlotMgr.Pin(pos)
 	tx.sharedLockTable.Lock(pos, tx.lockMode)
-	tx.sharedLockTable.UpgradeLock(pos, tx.id)
 	tx.lockedPages.Store(pos, struct{}{})
 }
 
@@ -110,6 +109,7 @@ func (tx *Tx) ReadPageAtPos(pos int64) *storage.HeapPage {
 func (tx *Tx) WritePageAtPos(page *storage.HeapPage, pos int64) {
 	tx.validateTxStatus()
 	tx.fetchAndLockPage(pos)
+	tx.sharedLockTable.UpgradeLock(pos, tx.id)
 	tx.bufSlotMgr.WritePageAtPos(page, pos)
 }
 
