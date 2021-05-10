@@ -37,7 +37,7 @@ func (e *Executor) Get(key string) ([]byte, bool) {
 	args := new(Args)
 	args.key = key
 	res := e.getCommand(args)
-	return res.value, true
+	return res.value, res.err == nil
 }
 
 // facade method
@@ -53,8 +53,8 @@ func (e *Executor) Set(key string, value []byte) ([]byte, bool) {
 func (e *Executor) Delete(key string) ([]byte, bool) {
 	args := new(Args)
 	args.key = key
-	e.delCommand(args)
-	return nil, true
+	res := e.delCommand(args)
+	return nil, res.err == nil
 }
 
 func (e *Executor) ExecuteCmd(cmd *Cmd) *Result {

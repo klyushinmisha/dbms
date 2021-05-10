@@ -21,16 +21,19 @@ const Page8K = 8192
 
 func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TxManager {
 	bufferCap := 8192
+	a := storage.NewHeapPageAllocator(Page8K)
+	strg := storage.NewStorageManager(dataFile, a)
 	buf := buffer.NewBufferSlotManager(
-		storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(Page8K)),
+		strg,
 		bufferCap,
 		Page8K,
 	)
 	return transaction.NewTxManager(
-		0,
+		strg,
 		buf,
 		logging.NewLogManager(logFile, Page8K),
 		concurrency.NewLockTable(),
+		a,
 	)
 }
 
@@ -109,7 +112,7 @@ func TestExecutor_ConcurrentSetGet(t *testing.T) {
 				e := NewExecutor(tx)
 				e.Init()
 			}()
-			keys := 1024
+			keys := 32
 			threads := 4
 			var wg sync.WaitGroup
 			wg.Add(threads)
@@ -153,7 +156,7 @@ func TestExecutor_ConcurrentSetDelete(t *testing.T) {
 				e := NewExecutor(tx)
 				e.Init()
 			}()
-			keys := 1024
+			keys := 32
 			threads := 4
 			totalTxs := threads
 			var deadTxsCtr atomic.AtomicCounter
