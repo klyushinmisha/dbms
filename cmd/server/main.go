@@ -29,27 +29,11 @@ func main() {
 	cfgLdr := new(config.DefaultConfigLoader)
 	cfgLdr.Load()
 
-	dataFile, err := os.OpenFile(cfgLdr.CoreCfg().DataPath(), os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer dataFile.Close()
-	logFile, err := os.OpenFile(cfgLdr.CoreCfg().LogPath(), os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer logFile.Close()
-
-	coreCfgr := core.NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg(), dataFile, logFile)
+	bootstrapMgr.Init()
+	defer bootstrapMgr.Finalize()
 	srvCfgr := server.NewDefaultDBMSServerConfigurator(cfgLdr.SrvCfg(), coreCfgr)
 
 	log.Print(serverSplash)
-	// init storage before recovery attempt
-	srvCfgr.TxSrv().InitStorage()
-	log.Printf("Initialized storage %s", cfgLdr.CoreCfg().DataPath())
-	// run recovery from journal
-	coreCfgr.RecMgr().RollForward(coreCfgr.TxMgr())
-	log.Printf("Recovered from journal %s", cfgLdr.CoreCfg().LogPath())
 	// accept incoming connections and process transactions
 	srvCfgr.ConnSrv().Run()
 }
