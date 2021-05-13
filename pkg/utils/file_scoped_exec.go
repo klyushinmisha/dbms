@@ -8,16 +8,16 @@ import (
 func FileScopedExec(name string, exec func(*os.File) error) error {
 	file, err := os.Create(name)
 	if err != nil {
-		log.Fatalln(err)
+		log.Panic(err)
 	}
 	defer func() {
 		closeErr := file.Close()
 		if closeErr != nil {
-			log.Fatalln(closeErr)
+			log.Panic(closeErr)
 		}
 		removeErr := os.Remove(name)
 		if removeErr != nil {
-			log.Fatalln(removeErr)
+			log.Panic(removeErr)
 		}
 	}()
 	return exec(file)

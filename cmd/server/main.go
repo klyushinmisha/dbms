@@ -31,12 +31,12 @@ func main() {
 
 	dataFile, err := os.OpenFile(cfgLdr.CoreCfg().DataPath(), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		log.Fatalln(err)
+		log.Panic(err)
 	}
 	defer dataFile.Close()
 	logFile, err := os.OpenFile(cfgLdr.CoreCfg().LogPath(), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		log.Fatalln(err)
+		log.Panic(err)
 	}
 	defer logFile.Close()
 
