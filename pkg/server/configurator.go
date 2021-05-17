@@ -6,14 +6,12 @@ import (
 )
 
 type DBMSServerConfigurator interface {
-	TxSrv() *TxServer
 	ConnSrv() *ConnServer
 }
 
 type DefaultDBMSServerConfigurator struct {
 	cfg      *config.ServerConfig
 	coreCfgr core.DBMSCoreConfigurator
-	txSrv    *TxServer
 }
 
 func NewDefaultDBMSServerConfigurator(
@@ -26,18 +24,10 @@ func NewDefaultDBMSServerConfigurator(
 	return c
 }
 
-func (c *DefaultDBMSServerConfigurator) TxSrv() *TxServer {
-	// singleton
-	if c.txSrv == nil {
-		c.txSrv = NewTxServer(c.coreCfgr.TxMgr())
-	}
-	return c.txSrv
-}
-
 func (c *DefaultDBMSServerConfigurator) ConnSrv() *ConnServer {
 	return NewConnServer(
 		c.cfg,
 		NewDumbSingleLineParser(),
-		c.TxSrv(),
+		c.coreCfgr.TxMgr(),
 	)
 }

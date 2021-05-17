@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"dbms/pkg/config"
+	"dbms/pkg/core/transaction"
 	"fmt"
 	"golang.org/x/sync/semaphore"
 	"io"
@@ -15,33 +16,16 @@ import (
 type ConnServer struct {
 	cfg    *config.ServerConfig
 	parser Parser
-	txSrv  *TxServer
+	txMgr  *transaction.TxManager
 }
 
-func NewConnServer(cfg *config.ServerConfig, parser Parser, txSrv *TxServer) *ConnServer {
+func NewConnServer(cfg *config.ServerConfig, parser Parser, txMgr *transaction.TxManager) *ConnServer {
 	s := new(ConnServer)
 	s.cfg = cfg
 	s.parser = parser
-	s.txSrv = txSrv
+	s.txMgr = txMgr
 	return s
 }
-
-const clientSplash = `
-
-__/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___        
- _\/\\\////////\\\__\/\\\/////////\\\_\/\\\\\\________/\\\\\\___/\\\/////////\\\_       
-  _\/\\\______\//\\\_\/\\\_______\/\\\_\/\\\//\\\____/\\\//\\\__\//\\\______\///__      
-   _\/\\\_______\/\\\_\/\\\\\\\\\\\\\\__\/\\\\///\\\/\\\/_\/\\\___\////\\\_________     
-    _\/\\\_______\/\\\_\/\\\/////////\\\_\/\\\__\///\\\/___\/\\\______\////\\\______    
-     _\/\\\_______\/\\\_\/\\\_______\/\\\_\/\\\____\///_____\/\\\_________\////\\\___   
-      _\/\\\_______/\\\__\/\\\_______\/\\\_\/\\\_____________\/\\\__/\\\______\//\\\__  
-       _\/\\\\\\\\\\\\/___\/\\\\\\\\\\\\\/__\/\\\_____________\/\\\_\///\\\\\\\\\\\/___ 
-        _\////////////_____\/////////////____\///______________\///____\///////////_____
-
-        DBMS - key-value database management system server (type HELP or cry for help)
-
-
-`
 
 func (s *ConnServer) Run() {
 	ln, err := net.Listen(s.cfg.TransportProtocol, fmt.Sprintf(":%d", s.cfg.Port))
@@ -71,12 +55,14 @@ func (s *ConnServer) Run() {
 }
 
 func (s *ConnServer) serve(conn net.Conn) {
-	desc := s.txSrv.Init()
-	defer s.txSrv.Terminate(desc)
+	tx := (*transaction.Tx)(nil)
+	defer func() {
+		if tx != nil {
+			tx.Abort()
+		}
+	}()
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
-	writer.Write([]byte(clientSplash))
-	writer.Flush()
 	for {
 		strCmd, err := reader.ReadString('\n')
 		if err == io.EOF {
@@ -89,7 +75,7 @@ func (s *ConnServer) serve(conn net.Conn) {
 		if parseErr != nil {
 			resp = fmt.Sprintf("%s", parseErr)
 		} else {
-			res := s.txSrv.ExecuteCmd(desc, cmd)
+			res := NewCommandFactory(tx, s.txMgr).Create(cmd).Execute()
 			if res.err != nil {
 				resp = fmt.Sprintf("%s", res.err)
 			} else if res.value != nil {
