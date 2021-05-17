@@ -28,10 +28,6 @@ func NewExecutor(tx *transaction.Tx) *Executor {
 	return e
 }
 
-func (e *Executor) Init() {
-	e.index.Init()
-}
-
 // facade method
 func (e *Executor) Get(key string) ([]byte, bool) {
 	args := new(Args)

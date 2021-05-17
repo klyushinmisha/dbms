@@ -108,20 +108,6 @@ func (s *TxServer) runExecutorCommandsInTx(exec func(*Executor), tx *transaction
 	exec(NewExecutor(tx))
 }
 
-func (s *TxServer) InitStorage() {
-	// run storage initialization
-	tx := s.txMgr.InitTx(concurrency.ExclusiveMode)
-	txRes := new(Result)
-	defer tx.Commit()
-	s.runExecutorCommandsInTx(func(e *Executor) {
-		e.Init()
-	}, tx, txRes)
-	if txRes.err != nil {
-		tx.Abort()
-		log.Panic(txRes.err)
-	}
-}
-
 func (s *TxServer) ExecuteCmd(clientDesc int, cmd *Cmd) *Result {
 	// TODO: state validate for commands
 	switch cmd.Type() {

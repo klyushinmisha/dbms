@@ -13,8 +13,10 @@ import (
 
 type DBMSCoreConfigurator interface {
 	TxMgr() *transaction.TxManager
+	SegMgr() *logging.SegmentManager
 	LogMgr() *logging.LogManager
 	RecMgr() *recovery.RecoveryManager
+	BtstpMgr() *BootstrapManager
 }
 
 // dataFile must be unique per configuration to prevent multiple access to same files
@@ -26,18 +28,12 @@ type DefaultDBMSCoreConfigurator struct {
 	txMgr      *transaction.TxManager
 	segMgr     *logging.SegmentManager
 	logMgr     *logging.LogManager
+	btstpMgr   *BootstrapManager
 }
 
-func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig, dataFile *os.File) *DefaultDBMSCoreConfigurator {
+func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig) *DefaultDBMSCoreConfigurator {
 	c := new(DefaultDBMSCoreConfigurator)
 	c.cfg = cfg
-	c.dataFile = dataFile
-	c.strgMgr = storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(c.cfg.PageSize))
-	c.bufSlotMgr = buffer.NewBufferSlotManager(
-		c.strgMgr,
-		cfg.BufCap,
-		cfg.PageSize,
-	)
 	c.logMgr = nil
 	return c
 }
@@ -45,6 +41,12 @@ func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig, dataFile *os.File) *
 func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
 	// singleton
 	if c.txMgr == nil {
+		c.strgMgr = storage.NewStorageManager(c.BtstpMgr().StrgFile(), storage.NewHeapPageAllocator(c.cfg.PageSize))
+		c.bufSlotMgr = buffer.NewBufferSlotManager(
+			c.strgMgr,
+			c.cfg.BufCap,
+			c.cfg.PageSize,
+		)
 		c.txMgr = transaction.NewTxManager(
 			c.strgMgr,
 			c.bufSlotMgr,
@@ -74,4 +76,12 @@ func (c *DefaultDBMSCoreConfigurator) LogMgr() *logging.LogManager {
 
 func (c *DefaultDBMSCoreConfigurator) RecMgr() *recovery.RecoveryManager {
 	return recovery.NewRecoveryManager(c.LogMgr())
+}
+
+func (c *DefaultDBMSCoreConfigurator) BtstpMgr() *BootstrapManager {
+	// singleton
+	if c.btstpMgr == nil {
+		c.btstpMgr = NewBootstrapManager(c.cfg, c)
+	}
+	return c.btstpMgr
 }
