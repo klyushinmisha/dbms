@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"dbms/pkg/config"
+	"dbms/pkg/core/transaction"
 	"fmt"
 	"golang.org/x/sync/semaphore"
 	"io"
@@ -12,36 +13,57 @@ import (
 	"strings"
 )
 
+// TxProxy handles tx lifecycle (init and finalization)
+type TxProxy struct {
+	txMgr *transaction.TxManager
+	tx    *transaction.Tx
+}
+
+func NewTxProxy(txMgr *transaction.TxManager) *TxProxy {
+	p := new(TxProxy)
+	p.txMgr = txMgr
+	return p
+}
+
+func (p *TxProxy) Tx() *transaction.Tx {
+	return p.tx
+}
+
+func (p *TxProxy) Init(mode int) error {
+	if p.tx != nil {
+		return ErrTxStarted
+	}
+	p.tx = p.txMgr.InitTx(mode)
+	return nil
+}
+
+func (p *TxProxy) Commit() {
+	if p.tx != nil {
+		p.tx.Commit()
+		p.tx = nil
+	}
+}
+
+func (p *TxProxy) Abort() {
+	if p.tx != nil {
+		p.tx.Abort()
+		p.tx = nil
+	}
+}
+
 type ConnServer struct {
 	cfg    *config.ServerConfig
 	parser Parser
-	txSrv  *TxServer
+	txMgr  *transaction.TxManager
 }
 
-func NewConnServer(cfg *config.ServerConfig, parser Parser, txSrv *TxServer) *ConnServer {
+func NewConnServer(cfg *config.ServerConfig, parser Parser, txMgr *transaction.TxManager) *ConnServer {
 	s := new(ConnServer)
 	s.cfg = cfg
 	s.parser = parser
-	s.txSrv = txSrv
+	s.txMgr = txMgr
 	return s
 }
-
-const clientSplash = `
-
-__/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___        
- _\/\\\////////\\\__\/\\\/////////\\\_\/\\\\\\________/\\\\\\___/\\\/////////\\\_       
-  _\/\\\______\//\\\_\/\\\_______\/\\\_\/\\\//\\\____/\\\//\\\__\//\\\______\///__      
-   _\/\\\_______\/\\\_\/\\\\\\\\\\\\\\__\/\\\\///\\\/\\\/_\/\\\___\////\\\_________     
-    _\/\\\_______\/\\\_\/\\\/////////\\\_\/\\\__\///\\\/___\/\\\______\////\\\______    
-     _\/\\\_______\/\\\_\/\\\_______\/\\\_\/\\\____\///_____\/\\\_________\////\\\___   
-      _\/\\\_______/\\\__\/\\\_______\/\\\_\/\\\_____________\/\\\__/\\\______\//\\\__  
-       _\/\\\\\\\\\\\\/___\/\\\\\\\\\\\\\/__\/\\\_____________\/\\\_\///\\\\\\\\\\\/___ 
-        _\////////////_____\/////////////____\///______________\///____\///////////_____
-
-        DBMS - key-value database management system server (type HELP or cry for help)
-
-
-`
 
 func (s *ConnServer) Run() {
 	ln, err := net.Listen(s.cfg.TransportProtocol, fmt.Sprintf(":%d", s.cfg.Port))
@@ -71,12 +93,11 @@ func (s *ConnServer) Run() {
 }
 
 func (s *ConnServer) serve(conn net.Conn) {
-	desc := s.txSrv.Init()
-	defer s.txSrv.Terminate(desc)
+	txProxy := NewTxProxy(s.txMgr)
+	defer txProxy.Abort()
+	cmdFact := NewCommandFactory(txProxy)
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
-	writer.Write([]byte(clientSplash))
-	writer.Flush()
 	for {
 		strCmd, err := reader.ReadString('\n')
 		if err == io.EOF {
@@ -85,20 +106,18 @@ func (s *ConnServer) serve(conn net.Conn) {
 			log.Panic(err)
 		}
 		cmd, parseErr := s.parser.Parse(strings.TrimSpace(strCmd))
-		var resp string
+		var res *Result
 		if parseErr != nil {
-			resp = fmt.Sprintf("%s", parseErr)
+			res = new(Result)
+			res.err = parseErr
 		} else {
-			res := s.txSrv.ExecuteCmd(desc, cmd)
-			if res.err != nil {
-				resp = fmt.Sprintf("%s", res.err)
-			} else if res.value != nil {
-				resp = string(res.value)
-			} else {
-				resp = "OK"
-			}
+			res = cmdFact.Create(cmd).Execute()
 		}
-		if _, writeErr := writer.Write([]byte(fmt.Sprintf("%s\n", resp))); writeErr != nil {
+		resp, marshalErr := res.MarshalBinary()
+		if marshalErr != nil {
+			log.Panic(marshalErr)
+		}
+		if _, writeErr := writer.Write(resp); writeErr != nil {
 			log.Panic(writeErr)
 		}
 		writer.Flush()
