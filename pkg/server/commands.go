@@ -8,6 +8,77 @@ import (
 	"log"
 )
 
+type Command func() *Result
+
+type CommandFactory struct {
+	txProxy *TxProxy
+}
+
+func NewCommandFactory(txProxy *TxProxy) *CommandFactory {
+	f := new(CommandFactory)
+	f.txProxy = txProxy
+	return f
+}
+
+func (f *CommandFactory) Create(cmd *Cmd) Command {
+	switch cmd.Type() {
+	case BegShCmd:
+		return NewBeginCommand(f.txProxy, concurrency.SharedMode)
+	case BegExCmd:
+		return NewBeginCommand(f.txProxy, concurrency.ExclusiveMode)
+	case CommitCmd:
+		return NewCommitCommand(f.txProxy)
+	case AbortCmd:
+		return NewAbortCommand(f.txProxy)
+	case HelpCmd:
+		return NewHelpCommand()
+	default:
+		return NewDataManipulationCommand(f.txProxy, cmd)
+	}
+}
+
+func NewBeginCommand(txProxy *TxProxy, mode int) Command {
+	return func() *Result {
+		res := new(Result)
+		if err := txProxy.Init(mode); err != nil {
+			res.err = err
+		}
+		return res
+	}
+}
+
+func NewCommitCommand(txProxy *TxProxy) Command {
+	return func() *Result {
+		txProxy.Commit()
+		return new(Result)
+	}
+}
+
+func NewAbortCommand(txProxy *TxProxy) Command {
+	return func() *Result {
+		txProxy.Abort()
+		return new(Result)
+	}
+}
+
+func NewHelpCommand() Command {
+	return func() *Result {
+		res := new(Result)
+		res.value = []byte(`Commands structure:
+Data manipulation commands:
+	GET key         - finds value associated with key
+	SET key value   - sets value associated with key
+	DEL key         - removes value associated with key
+Transaction management commands:
+	BEGIN SHARED    - starts new transaction with per-operation isolation
+	BEGIN EXCLUSIVE - starts new transaction with per-transation isolation
+	COMMIT          - commits active transaction
+	ABORT           - aborts active transaction
+`)
+		return res
+	}
+}
+
 type DataManipulationCommand struct {
 	txProxy     *TxProxy
 	cmd         *Cmd
@@ -17,7 +88,7 @@ type DataManipulationCommand struct {
 	commandsMap map[int]func(args *Args)
 }
 
-func NewDataManipulationCommand(txProxy *TxProxy, cmd *Cmd) *DataManipulationCommand {
+func NewDataManipulationCommand(txProxy *TxProxy, cmd *Cmd) Command {
 	c := new(DataManipulationCommand)
 	c.txProxy = txProxy
 	c.cmd = cmd
@@ -27,10 +98,10 @@ func NewDataManipulationCommand(txProxy *TxProxy, cmd *Cmd) *DataManipulationCom
 		SetCmd: c.setCommand,
 		DelCmd: c.delCommand,
 	}
-	return c
+	return c.execute
 }
 
-func (c *DataManipulationCommand) Execute() *Result {
+func (c *DataManipulationCommand) execute() *Result {
 	if c.txProxy.Tx() == nil {
 		c.txProxy.Init(concurrency.SharedMode)
 		defer c.txProxy.Commit()

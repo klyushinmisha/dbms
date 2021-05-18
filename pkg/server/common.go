@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"dbms/pkg/core/concurrency"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -76,35 +75,4 @@ func (r *Result) MarshalBinary() ([]byte, error) {
 		return nil, writeErr
 	}
 	return buf.Bytes(), nil
-}
-
-type Command interface {
-	Execute() *Result
-}
-
-type CommandFactory struct {
-	txProxy *TxProxy
-}
-
-func NewCommandFactory(txProxy *TxProxy) *CommandFactory {
-	f := new(CommandFactory)
-	f.txProxy = txProxy
-	return f
-}
-
-func (f *CommandFactory) Create(cmd *Cmd) Command {
-	switch cmd.Type() {
-	case BegShCmd:
-		return NewBeginCommand(f.txProxy, concurrency.SharedMode)
-	case BegExCmd:
-		return NewBeginCommand(f.txProxy, concurrency.ExclusiveMode)
-	case CommitCmd:
-		return NewCommitCommand(f.txProxy)
-	case AbortCmd:
-		return NewAbortCommand(f.txProxy)
-	case HelpCmd:
-		return NewHelpCommand()
-	default:
-		return NewDataManipulationCommand(f.txProxy, cmd)
-	}
 }

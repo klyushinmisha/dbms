@@ -131,7 +131,7 @@ func (s *ConnServer) serve(conn net.Conn) {
 			res = new(Result)
 			res.err = parseErr
 		} else {
-			res = cmdFact.Create(cmd).Execute()
+			res = cmdFact.Create(cmd)()
 		}
 		resp, marshalErr := res.MarshalBinary()
 		if marshalErr != nil {
