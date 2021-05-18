@@ -9,6 +9,39 @@ var (
 	ErrInvalidCmdStruct = errors.New("Invalid command")
 )
 
+const (
+	GetCmd    = 0
+	SetCmd    = 1
+	DelCmd    = 2
+	BegShCmd  = 3
+	BegExCmd  = 4
+	CommitCmd = 5
+	AbortCmd  = 6
+	HelpCmd   = 7
+)
+
+type Args struct {
+	key   string
+	value []byte
+}
+
+type Cmd struct {
+	cmdType int
+	key     string
+	value   []byte
+}
+
+func (c *Cmd) Type() int {
+	return c.cmdType
+}
+
+func (c *Cmd) Args() *Args {
+	a := new(Args)
+	a.key = c.key
+	a.value = c.value
+	return a
+}
+
 type Parser interface {
 	Parse(string) (*Cmd, error)
 }

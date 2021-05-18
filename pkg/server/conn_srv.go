@@ -5,6 +5,8 @@ import (
 	"context"
 	"dbms/pkg/config"
 	"dbms/pkg/core/transaction"
+	"dbms/pkg/transfer"
+	"errors"
 	"fmt"
 	"golang.org/x/sync/semaphore"
 	"io"
@@ -28,6 +30,10 @@ func NewTxProxy(txMgr *transaction.TxManager) *TxProxy {
 func (p *TxProxy) Tx() *transaction.Tx {
 	return p.tx
 }
+
+var (
+	ErrTxStarted = errors.New("tx is already started")
+)
 
 func (p *TxProxy) Init(mode int) error {
 	if p.tx != nil {
@@ -126,10 +132,9 @@ func (s *ConnServer) serve(conn net.Conn) {
 			log.Panic(err)
 		}
 		cmd, parseErr := s.parser.Parse(strings.TrimSpace(strCmd))
-		var res *Result
+		var res *transfer.Result
 		if parseErr != nil {
-			res = new(Result)
-			res.err = parseErr
+			res = transfer.ErrResult(parseErr)
 		} else {
 			res = cmdFact.Create(cmd)()
 		}
