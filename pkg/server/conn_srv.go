@@ -51,6 +51,29 @@ func (p *TxProxy) Abort() {
 	}
 }
 
+type ConnLimiter struct {
+	ln  net.Listener
+	sem *semaphore.Weighted
+	ctx context.Context
+}
+
+func NewConnLimiter(ln net.Listener, maxConn int) *ConnLimiter {
+	l := new(ConnLimiter)
+	l.ln = ln
+	l.sem = semaphore.NewWeighted(int64(maxConn))
+	l.ctx = context.TODO()
+	return l
+}
+
+func (l *ConnLimiter) Accept() (net.Conn, error) {
+	l.sem.Acquire(l.ctx, 1)
+	return l.ln.Accept()
+}
+
+func (l *ConnLimiter) Release() {
+	l.sem.Release(1)
+}
+
 type ConnServer struct {
 	cfg    *config.ServerConfig
 	parser Parser
@@ -71,13 +94,10 @@ func (s *ConnServer) Run() {
 	if err != nil {
 		log.Panic(err)
 	}
+	lim := NewConnLimiter(ln, s.cfg.MaxConnections)
 	log.Printf("Server is up on port %d", s.cfg.Port)
-	sem := semaphore.NewWeighted(int64(s.cfg.MaxConnections))
-	ctx := context.TODO()
 	for {
-		// acquire weighted semaphore to reduce concurrency
-		sem.Acquire(ctx, 1)
-		conn, err := ln.Accept()
+		conn, err := lim.Accept()
 		if err != nil {
 			log.Panic(err)
 		}
@@ -85,7 +105,7 @@ func (s *ConnServer) Run() {
 		go func() {
 			defer func() {
 				log.Printf("Release connection with host %s", conn.RemoteAddr())
-				sem.Release(1)
+				lim.Release()
 			}()
 			s.serve(conn)
 		}()
