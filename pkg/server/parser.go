@@ -46,10 +46,7 @@ type Parser interface {
 	Parse(string) (*Cmd, error)
 }
 
-type DumbSingleLineParser struct {
-	patterns        map[int]*regexp.Regexp
-	parseStrategies map[int]func(int, []string) *Cmd
-}
+type parseStrategy func(int, []string) *Cmd
 
 func noArgsParseStrategy(cmdType int, _ []string) *Cmd {
 	cmd := new(Cmd)
@@ -72,6 +69,11 @@ func twoArgsParseStrategy(cmdType int, args []string) *Cmd {
 	return cmd
 }
 
+type DumbSingleLineParser struct {
+	patterns        map[int]*regexp.Regexp
+	parseStrategies map[int]parseStrategy
+}
+
 func NewDumbSingleLineParser() *DumbSingleLineParser {
 	p := new(DumbSingleLineParser)
 	p.patterns = map[int]*regexp.Regexp{
@@ -84,7 +86,7 @@ func NewDumbSingleLineParser() *DumbSingleLineParser {
 		AbortCmd:  regexp.MustCompile(`^ABORT$`),
 		HelpCmd:   regexp.MustCompile(`^HELP$`),
 	}
-	p.parseStrategies = map[int]func(int, []string) *Cmd{
+	p.parseStrategies = map[int]parseStrategy{
 		GetCmd:    oneArgParseStrategy,
 		SetCmd:    twoArgsParseStrategy,
 		DelCmd:    oneArgParseStrategy,
