@@ -3,7 +3,6 @@ package transfer
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 )
 
 type Result struct {
@@ -49,7 +48,7 @@ func (r *Result) MarshalBinary() ([]byte, error) {
 	}
 	errBytes := []byte{}
 	if r.err != nil {
-		errBytes = []byte(fmt.Sprintf("%s", r.err))
+		errBytes = []byte(r.err.Error())
 	}
 	if writeErr := binary.Write(buf, binary.LittleEndian, int32(len(errBytes))); writeErr != nil {
 		return nil, writeErr
