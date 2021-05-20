@@ -4,7 +4,7 @@ Key-value database management system server
 ## Main features
 * Simple key-value command interface (GET, SET, DEL)
 * ACID transaction management (concurrency control via 2PL, write-ahead logging)
-* Exclusive and shared (prevents from exclusive locking) transactions. Locks acquired per transaction of per operation
+* Exclusive (per transaction; READ COMMITTED equivalent) and shared (per operation; READ UNCOMMITTED equivalent) locking
 * Uses simple plaintext protocol to send commands from remote
 
 ## Workflow example
