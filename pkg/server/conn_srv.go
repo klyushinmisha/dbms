@@ -1,18 +1,13 @@
 package server
 
 import (
-	"bufio"
-	"context"
 	"dbms/pkg/config"
 	"dbms/pkg/core/transaction"
 	"dbms/pkg/transfer"
 	"errors"
 	"fmt"
-	"golang.org/x/sync/semaphore"
-	"io"
 	"log"
 	"net"
-	"strings"
 )
 
 // TxProxy handles tx lifecycle (init and finalization)
@@ -57,29 +52,6 @@ func (p *TxProxy) Abort() {
 	}
 }
 
-type ConnLimiter struct {
-	ln  net.Listener
-	sem *semaphore.Weighted
-	ctx context.Context
-}
-
-func NewConnLimiter(ln net.Listener, maxConn int) *ConnLimiter {
-	l := new(ConnLimiter)
-	l.ln = ln
-	l.sem = semaphore.NewWeighted(int64(maxConn))
-	l.ctx = context.TODO()
-	return l
-}
-
-func (l *ConnLimiter) Accept() (net.Conn, error) {
-	l.sem.Acquire(l.ctx, 1)
-	return l.ln.Accept()
-}
-
-func (l *ConnLimiter) Release() {
-	l.sem.Release(1)
-}
-
 type ConnServer struct {
 	cfg    *config.ServerConfig
 	parser Parser
@@ -122,29 +94,11 @@ func (s *ConnServer) serve(conn net.Conn) {
 	txProxy := NewTxProxy(s.txMgr)
 	defer txProxy.Abort()
 	cmdFact := NewCommandFactory(txProxy)
-	reader := bufio.NewReader(conn)
-	writer := bufio.NewWriter(conn)
-	for {
-		strCmd, err := reader.ReadString('\n')
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			log.Panic(err)
-		}
-		cmd, parseErr := s.parser.Parse(strings.TrimSpace(strCmd))
-		var res *transfer.Result
-		if parseErr != nil {
-			res = transfer.ErrResult(parseErr)
+	DumbRawCmdStreamProcessorFromConn(conn).Pipe(func(rawCmd string) *transfer.Result {
+		if cmd, err := s.parser.Parse(rawCmd); err != nil {
+			return transfer.ErrResult(err)
 		} else {
-			res = cmdFact.Create(cmd)()
+			return cmdFact.Create(*cmd)()
 		}
-		resp, marshalErr := res.MarshalBinary()
-		if marshalErr != nil {
-			log.Panic(marshalErr)
-		}
-		if _, writeErr := writer.Write(resp); writeErr != nil {
-			log.Panic(writeErr)
-		}
-		writer.Flush()
-	}
+	})
 }

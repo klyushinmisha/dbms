@@ -1,6 +1,7 @@
 package server
 
 import (
+	"dbms/pkg/transfer"
 	"errors"
 	"regexp"
 )
@@ -20,52 +21,31 @@ const (
 	HelpCmd   = 7
 )
 
-type Args struct {
-	key   string
-	value []byte
-}
-
-type Cmd struct {
-	cmdType int
-	key     string
-	value   []byte
-}
-
-func (c *Cmd) Type() int {
-	return c.cmdType
-}
-
-func (c *Cmd) Args() *Args {
-	a := new(Args)
-	a.key = c.key
-	a.value = c.value
-	return a
-}
-
 type Parser interface {
-	Parse(string) (*Cmd, error)
+	Validate(string) error
+	Parse(string) (*transfer.Cmd, error)
 }
 
-type parseStrategy func(int, []string) *Cmd
+type parseStrategy func(int, []string) *transfer.Cmd
 
-func noArgsParseStrategy(cmdType int, _ []string) *Cmd {
-	cmd := new(Cmd)
-	cmd.cmdType = cmdType
+func noArgsParseStrategy(cmdType int, _ []string) *transfer.Cmd {
+	cmd := new(transfer.Cmd)
+	cmd.Type = cmdType
 	return cmd
 }
 
-func oneArgParseStrategy(cmdType int, args []string) *Cmd {
-	cmd := new(Cmd)
-	cmd.cmdType = cmdType
-	cmd.key = args[0]
+func oneArgParseStrategy(cmdType int, args []string) *transfer.Cmd {
+	cmd := new(transfer.Cmd)
+	cmd.Type = cmdType
+	cmd.Key = args[0]
 	return cmd
 }
 
-func twoArgsParseStrategy(cmdType int, args []string) *Cmd {
-	cmd := new(Cmd)
-	cmd.cmdType = cmdType
-	cmd.key = args[0]
-	cmd.value = []byte(args[1])
+func twoArgsParseStrategy(cmdType int, args []string) *transfer.Cmd {
+	cmd := new(transfer.Cmd)
+	cmd.Type = cmdType
+	cmd.Key = args[0]
+	cmd.Value = []byte(args[1])
 	return cmd
 }
 
@@ -99,9 +79,14 @@ func NewDumbSingleLineParser() *DumbSingleLineParser {
 	return p
 }
 
-func (p *DumbSingleLineParser) Parse(strCmd string) (*Cmd, error) {
+func (p *DumbSingleLineParser) Validate(rawCmd string) error {
+	_, err := p.Parse(rawCmd)
+	return err
+}
+
+func (p *DumbSingleLineParser) Parse(rawCmd string) (*transfer.Cmd, error) {
 	for cmdType, r := range p.patterns {
-		if match := r.FindStringSubmatch(strCmd); match != nil {
+		if match := r.FindStringSubmatch(rawCmd); match != nil {
 			return p.parseStrategies[cmdType](cmdType, match[1:]), nil
 		}
 	}

@@ -21,24 +21,24 @@ func NewCommandFactory(txProxy *TxProxy) *CommandFactory {
 	return f
 }
 
-func (f *CommandFactory) Create(cmd *Cmd) Command {
-	switch cmd.Type() {
+func (f *CommandFactory) Create(cmd transfer.Cmd) Command {
+	switch cmd.Type {
 	case BegShCmd:
-		return NewBeginCommand(f.txProxy, concurrency.SharedMode)
+		return createBeginCommand(f.txProxy, concurrency.SharedMode)
 	case BegExCmd:
-		return NewBeginCommand(f.txProxy, concurrency.ExclusiveMode)
+		return createBeginCommand(f.txProxy, concurrency.ExclusiveMode)
 	case CommitCmd:
-		return NewCommitCommand(f.txProxy)
+		return createCommitCommand(f.txProxy)
 	case AbortCmd:
-		return NewAbortCommand(f.txProxy)
+		return createAbortCommand(f.txProxy)
 	case HelpCmd:
-		return NewHelpCommand()
+		return createHelpCommand()
 	default:
-		return NewDataManipulationCommand(f.txProxy, cmd)
+		return createDataManipulationCommand(f.txProxy, cmd)
 	}
 }
 
-func NewBeginCommand(txProxy *TxProxy, mode int) Command {
+func createBeginCommand(txProxy *TxProxy, mode int) Command {
 	return func() *transfer.Result {
 		if err := txProxy.Init(mode); err != nil {
 			return transfer.ErrResult(err)
@@ -47,21 +47,21 @@ func NewBeginCommand(txProxy *TxProxy, mode int) Command {
 	}
 }
 
-func NewCommitCommand(txProxy *TxProxy) Command {
+func createCommitCommand(txProxy *TxProxy) Command {
 	return func() *transfer.Result {
 		txProxy.Commit()
 		return transfer.OkResult()
 	}
 }
 
-func NewAbortCommand(txProxy *TxProxy) Command {
+func createAbortCommand(txProxy *TxProxy) Command {
 	return func() *transfer.Result {
 		txProxy.Abort()
 		return transfer.OkResult()
 	}
 }
 
-func NewHelpCommand() Command {
+func createHelpCommand() Command {
 	return func() *transfer.Result {
 		return transfer.ValueResult([]byte(`Commands structure:
 Data manipulation commands:
@@ -77,90 +77,92 @@ Transaction management commands:
 	}
 }
 
-type DataManipulationCommand struct {
+type encapsulatedCommand func(args transfer.Args)
+
+type dataManipulationCommandState struct {
 	txProxy     *TxProxy
-	cmd         *Cmd
+	cmd         transfer.Cmd
 	res         *transfer.Result
 	index       *bp_tree.BPTree
 	da          *dataAdapter.DataAdapter
-	commandsMap map[int]func(args *Args)
+	commandsMap map[int]encapsulatedCommand
 }
 
-func NewDataManipulationCommand(txProxy *TxProxy, cmd *Cmd) Command {
-	c := new(DataManipulationCommand)
-	c.txProxy = txProxy
-	c.cmd = cmd
-	c.commandsMap = map[int]func(args *Args){
-		GetCmd: c.getCommand,
-		SetCmd: c.setCommand,
-		DelCmd: c.delCommand,
+func createDataManipulationCommand(txProxy *TxProxy, cmd transfer.Cmd) Command {
+	f := new(dataManipulationCommandState)
+	f.txProxy = txProxy
+	f.cmd = cmd
+	f.commandsMap = map[int]encapsulatedCommand{
+		GetCmd: f.getCommand,
+		SetCmd: f.setCommand,
+		DelCmd: f.delCommand,
 	}
-	return c.execute
+	return f.execute
 }
 
-func (c *DataManipulationCommand) execute() *transfer.Result {
-	if c.txProxy.Tx() == nil {
-		c.txProxy.Init(concurrency.SharedMode)
-		defer c.txProxy.Commit()
+func (f *dataManipulationCommandState) execute() *transfer.Result {
+	if f.txProxy.Tx() == nil {
+		f.txProxy.Init(concurrency.SharedMode)
+		defer f.txProxy.Commit()
 	}
-	c.index = bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(c.txProxy.Tx()))
-	c.da = dataAdapter.NewDataAdapter(c.txProxy.Tx())
+	f.index = bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(f.txProxy.Tx()))
+	f.da = dataAdapter.NewDataAdapter(f.txProxy.Tx())
 	defer func() {
 		if err := recover(); err == concurrency.ErrTxLockTimeout {
-			c.txProxy.Abort()
-			*c.res = *transfer.ErrResult(concurrency.ErrTxLockTimeout)
+			f.txProxy.Abort()
+			*f.res = *transfer.ErrResult(concurrency.ErrTxLockTimeout)
 		} else if err != nil {
 			log.Panic(err)
 		}
 	}()
-	c.commandsMap[c.cmd.Type()](c.cmd.Args())
-	return c.res
+	f.commandsMap[f.cmd.Type](f.cmd.Args)
+	return f.res
 }
 
-func (c *DataManipulationCommand) getCommand(args *Args) {
-	defer c.txProxy.Tx().DowngradeLocks()
-	pos, findErr := c.index.Find(args.key)
+func (f *dataManipulationCommandState) getCommand(args transfer.Args) {
+	defer f.txProxy.Tx().DowngradeLocks()
+	pos, findErr := f.index.Find(args.Key)
 	if findErr == bp_tree.ErrKeyNotFound {
-		c.res = transfer.ErrResult(bp_tree.ErrKeyNotFound)
+		f.res = transfer.ErrResult(bp_tree.ErrKeyNotFound)
 		return
 	} else if findErr != nil {
 		log.Panic(findErr)
 	}
-	data, findErr := c.da.FindAtPos(args.key, pos)
+	data, findErr := f.da.FindAtPos(args.Key, pos)
 	if findErr != nil {
 		log.Panic(findErr)
 	}
-	c.res = transfer.ValueResult(data)
+	f.res = transfer.ValueResult(data)
 }
 
-func (c *DataManipulationCommand) setCommand(args *Args) {
-	defer c.txProxy.Tx().DowngradeLocks()
-	pos, findErr := c.index.Find(args.key)
+func (f *dataManipulationCommandState) setCommand(args transfer.Args) {
+	defer f.txProxy.Tx().DowngradeLocks()
+	pos, findErr := f.index.Find(args.Key)
 	if findErr == nil {
-		if writeErr := c.da.WriteAtPos(args.key, args.value, pos); writeErr != nil {
+		if writeErr := f.da.WriteAtPos(args.Key, args.Value, pos); writeErr != nil {
 			log.Panic(writeErr)
 		}
 	} else if findErr == bp_tree.ErrKeyNotFound {
-		writePos, writeErr := c.da.Write(args.key, args.value)
+		writePos, writeErr := f.da.Write(args.Key, args.Value)
 		if writeErr != nil {
 			log.Panic(writeErr)
 		}
-		c.index.Insert(args.key, writePos)
+		f.index.Insert(args.Key, writePos)
 	} else {
 		log.Panic(findErr)
 	}
-	c.res = transfer.OkResult()
+	f.res = transfer.OkResult()
 }
 
-func (c *DataManipulationCommand) delCommand(args *Args) {
-	defer c.txProxy.Tx().DowngradeLocks()
-	pos, err := c.index.Delete(args.key)
+func (f *dataManipulationCommandState) delCommand(args transfer.Args) {
+	defer f.txProxy.Tx().DowngradeLocks()
+	pos, err := f.index.Delete(args.Key)
 	if err == bp_tree.ErrKeyNotFound {
-		c.res = transfer.ErrResult(bp_tree.ErrKeyNotFound)
+		f.res = transfer.ErrResult(bp_tree.ErrKeyNotFound)
 		return
 	}
-	if delErr := c.da.DeleteAtPos(args.key, pos); delErr != nil {
+	if delErr := f.da.DeleteAtPos(args.Key, pos); delErr != nil {
 		log.Panic(delErr)
 	}
-	c.res = transfer.OkResult()
+	f.res = transfer.OkResult()
 }
