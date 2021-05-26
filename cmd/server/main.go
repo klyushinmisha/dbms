@@ -1,9 +1,9 @@
 package main
 
 import (
-	"dbms/pkg/config"
-	"dbms/pkg/core"
-	"dbms/pkg/server"
+	"dbms/internal/config"
+	"dbms/internal/core"
+	"dbms/internal/server"
 )
 
 func main() {
