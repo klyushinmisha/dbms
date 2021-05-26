@@ -133,7 +133,7 @@ func (tx *Tx) CommitNoLog() {
 
 func (tx *Tx) AbortNoLog() {
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
-		tx.bufSlotMgr.Flush(pos.(int64))
+		tx.bufSlotMgr.Unpin(pos.(int64))
 		tx.bufSlotMgr.Deallocate(pos.(int64))
 		tx.sharedLockTable.Unlock(pos.(int64))
 		return true
