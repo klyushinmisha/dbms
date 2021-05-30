@@ -4,6 +4,7 @@ import (
 	"dbms/internal/config"
 	"dbms/internal/core/access/bp_tree"
 	"dbms/internal/core/concurrency"
+	"dbms/pkg"
 	bpAdapter "dbms/internal/core/storage/adapters/bp_tree"
 	"log"
 	"os"
@@ -21,7 +22,7 @@ __/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___
        _\/\\\\\\\\\\\\/___\/\\\\\\\\\\\\\/__\/\\\_____________\/\\\_\///\\\\\\\\\\\/___ 
         _\////////////_____\/////////////____\///______________\///____\///////////_____
 
-                    DBMS - key-value database management system server
+                    DBMS (version %s) - key-value database management system server
 
 
 `
@@ -44,7 +45,7 @@ func (m *BootstrapManager) StrgFile() *os.File {
 }
 
 func (m *BootstrapManager) Init() {
-	log.Print(serverSplash)
+	log.Printf(serverSplash, pkg.Version)
 	// load log segments
 	m.cfgr.SegMgr().LoadSegments()
 	// init storage before recovery attempt
