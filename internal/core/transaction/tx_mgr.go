@@ -131,16 +131,6 @@ func (tx *Tx) CommitNoLog() {
 	tx.logMgr.Release(tx.Id())
 }
 
-func (tx *Tx) AbortNoLog() {
-	tx.lockedPages.Range(func(pos, _ interface{}) bool {
-		tx.bufSlotMgr.Unpin(pos.(int64))
-		tx.bufSlotMgr.Deallocate(pos.(int64))
-		tx.sharedLockTable.Unlock(pos.(int64))
-		return true
-	})
-	tx.logMgr.Release(tx.Id())
-}
-
 func (tx *Tx) Commit() {
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		if page := tx.bufSlotMgr.ReadPageIfDirty(pos.(int64)); page != nil {
@@ -159,9 +149,13 @@ func (tx *Tx) Commit() {
 }
 
 func (tx *Tx) Abort() {
-	tx.logMgr.LogAbort(tx.id)
-	tx.logMgr.Flush()
-	tx.AbortNoLog()
+	tx.lockedPages.Range(func(pos, _ interface{}) bool {
+		tx.bufSlotMgr.Unpin(pos.(int64))
+		tx.bufSlotMgr.Deallocate(pos.(int64))
+		tx.sharedLockTable.Unlock(pos.(int64))
+		return true
+	})
+	tx.logMgr.Release(tx.Id())
 	tx.status = aborted
 }
 

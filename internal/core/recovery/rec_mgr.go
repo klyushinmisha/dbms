@@ -46,7 +46,7 @@ func (m *RecoveryManager) RollForward(txMgr *transaction.TxManager) {
 				delete(txs, tx.Id())
 				break
 			case logging.AbortRecord:
-				tx.AbortNoLog()
+				tx.Abort()
 				delete(txs, tx.Id())
 				break
 			}
