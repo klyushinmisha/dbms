@@ -1,8 +1,7 @@
-package buffer
+package storage
 
 import (
 	"dbms/internal/core/concurrency"
-	"dbms/internal/core/storage"
 	"log"
 	"sync"
 )
@@ -18,11 +17,11 @@ type BufferSlotManager struct {
 	memPool      []byte
 	cap          int
 	slotSize     int
-	storage      *storage.StorageManager
+	storage      *StorageManager
 	posToSlotMap sync.Map
 }
 
-func NewBufferSlotManager(storage *storage.StorageManager, slots int, slotSize int) *BufferSlotManager {
+func NewBufferSlotManager(storage *StorageManager, slots int, slotSize int) *BufferSlotManager {
 	var m BufferSlotManager
 	m.bufHdrMgr = newBufferHeaderManager(slots)
 	m.memPool = make([]byte, slots*slotSize, slots*slotSize)
@@ -99,19 +98,19 @@ func (m *BufferSlotManager) Unpin(pos int64) {
 	m.bufHdrMgr.unpin(desc.slotId)
 }
 
-func (m *BufferSlotManager) ReadPageAtPos(pos int64) *storage.HeapPage {
+func (m *BufferSlotManager) ReadPageAtPos(pos int64) *HeapPage {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.Lock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
 	block := m.getBlockBySlotId(desc.slotId)
-	page := new(storage.HeapPage)
+	page := new(HeapPage)
 	if unmarshalErr := page.UnmarshalBinary(block); unmarshalErr != nil {
 		log.Panic(unmarshalErr)
 	}
 	return page
 }
 
-func (m *BufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
+func (m *BufferSlotManager) WritePageAtPos(page *HeapPage, pos int64) {
 	newBlock, marshalErr := page.MarshalBinary()
 	if marshalErr != nil {
 		log.Panic(marshalErr)
@@ -125,7 +124,7 @@ func (m *BufferSlotManager) WritePageAtPos(page *storage.HeapPage, pos int64) {
 }
 
 // ReadPageAtPos modification; returns nil if page is not dirty (for logging purposes)
-func (m *BufferSlotManager) ReadPageIfDirty(pos int64) *storage.HeapPage {
+func (m *BufferSlotManager) ReadPageIfDirty(pos int64) *HeapPage {
 	desc := m.waitNotNilDesc(pos)
 	desc.lock.Lock(concurrency.SharedMode)
 	defer desc.lock.Unlock()
@@ -133,7 +132,7 @@ func (m *BufferSlotManager) ReadPageIfDirty(pos int64) *storage.HeapPage {
 		return nil
 	}
 	block := m.getBlockBySlotId(desc.slotId)
-	page := new(storage.HeapPage)
+	page := new(HeapPage)
 	if unmarshalErr := page.UnmarshalBinary(block); unmarshalErr != nil {
 		log.Panic(unmarshalErr)
 	}

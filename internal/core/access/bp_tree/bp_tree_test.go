@@ -5,7 +5,6 @@ import (
 	"dbms/internal/core/logging"
 	"dbms/internal/core/storage"
 	"dbms/internal/core/storage/adapters/bp_tree"
-	"dbms/internal/core/storage/buffer"
 	"dbms/internal/core/transaction"
 	"dbms/internal/utils"
 	"log"
@@ -1044,7 +1043,7 @@ const Page8K = 8192
 
 func createDefaultTxMgr(dataFile *os.File, logFile *os.File) *transaction.TxManager {
 	bufferCap := 1024
-	buf := buffer.NewBufferSlotManager(
+	buf := storage.NewBufferSlotManager(
 		storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(Page8K)),
 		bufferCap,
 		Page8K,

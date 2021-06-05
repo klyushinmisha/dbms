@@ -6,7 +6,6 @@ import (
 	"dbms/internal/core/logging"
 	"dbms/internal/core/recovery"
 	"dbms/internal/core/storage"
-	"dbms/internal/core/storage/buffer"
 	"dbms/internal/core/transaction"
 	"os"
 )
@@ -24,7 +23,7 @@ type DefaultDBMSCoreConfigurator struct {
 	cfg        *config.CoreConfig
 	dataFile   *os.File
 	strgMgr    *storage.StorageManager
-	bufSlotMgr *buffer.BufferSlotManager
+	bufSlotMgr *storage.BufferSlotManager
 	txMgr      *transaction.TxManager
 	segMgr     *logging.SegmentManager
 	logMgr     *logging.LogManager
@@ -42,7 +41,7 @@ func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
 	// singleton
 	if c.txMgr == nil {
 		c.strgMgr = storage.NewStorageManager(c.BtstpMgr().StrgFile(), storage.NewHeapPageAllocator(c.cfg.PageSize))
-		c.bufSlotMgr = buffer.NewBufferSlotManager(
+		c.bufSlotMgr = storage.NewBufferSlotManager(
 			c.strgMgr,
 			c.cfg.BufCap,
 			c.cfg.PageSize,

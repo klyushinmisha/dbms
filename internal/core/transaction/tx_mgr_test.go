@@ -4,7 +4,6 @@ import (
 	"dbms/internal/core/concurrency"
 	"dbms/internal/core/logging"
 	"dbms/internal/core/storage"
-	"dbms/internal/core/storage/buffer"
 	"dbms/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"log"
@@ -21,7 +20,7 @@ func TestTxManager_InitUpdateCommit(t *testing.T) {
 			txCount := 32
 			threads := 16
 			bufferCap := 32
-			buf := buffer.NewBufferSlotManager(
+			buf := storage.NewBufferSlotManager(
 				storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(Page8K)),
 				bufferCap,
 				Page8K,
@@ -87,7 +86,7 @@ func TestTxManager_InitUpdateAbort(t *testing.T) {
 			txCount := 32
 			threads := 16
 			bufferCap := 32
-			buf := buffer.NewBufferSlotManager(
+			buf := storage.NewBufferSlotManager(
 				storage.NewStorageManager(dataFile),
 				bufferCap,
 				Page8K,

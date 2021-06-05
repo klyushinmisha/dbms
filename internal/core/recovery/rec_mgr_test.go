@@ -4,7 +4,6 @@ import (
 	"dbms/internal/core/concurrency"
 	"dbms/internal/core/logging"
 	"dbms/internal/core/storage"
-	"dbms/internal/core/storage/buffer"
 	"dbms/internal/core/transaction"
 	"dbms/internal/utils"
 	"log"
@@ -20,7 +19,7 @@ func TestRecoveryManager_LogRecovery(t *testing.T) {
 			keys := 32
 			page := storage.AllocatePage(pageSize)
 			recMgr := NewRecoveryManager(logMgr)
-			buf := buffer.NewBufferSlotManager(
+			buf := storage.NewBufferSlotManager(
 				storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(pageSize)),
 				128,
 				pageSize,

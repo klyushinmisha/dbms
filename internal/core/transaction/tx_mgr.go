@@ -5,7 +5,6 @@ import (
 	"dbms/internal/core/concurrency"
 	"dbms/internal/core/logging"
 	"dbms/internal/core/storage"
-	"dbms/internal/core/storage/buffer"
 	"log"
 	"sync"
 )
@@ -34,7 +33,7 @@ func (t *Tx) Id() int {
 type TxManager struct {
 	idCtr           atomic.AtomicCounter
 	strgMgr         *storage.StorageManager
-	bufSlotMgr      *buffer.BufferSlotManager
+	bufSlotMgr      *storage.BufferSlotManager
 	logMgr          *logging.LogManager
 	sharedLockTable *concurrency.LockTable
 	a               *storage.HeapPageAllocator
@@ -42,7 +41,7 @@ type TxManager struct {
 
 func NewTxManager(
 	strgMgr *storage.StorageManager,
-	bufSlotMgr *buffer.BufferSlotManager,
+	bufSlotMgr *storage.BufferSlotManager,
 	logMgr *logging.LogManager,
 	sharedLockTable *concurrency.LockTable,
 	a *storage.HeapPageAllocator,

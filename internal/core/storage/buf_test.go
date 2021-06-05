@@ -1,8 +1,7 @@
-package buffer
+package storage
 
 import (
 	"dbms/internal/core/concurrency"
-	"dbms/internal/core/storage"
 	"dbms/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"log"
@@ -13,7 +12,7 @@ import (
 
 func TestBuffer_FetchFlush(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
-		strg_mgr := storage.NewStorageManager(dataFile, storage.NewHeapPageAllocator(8192))
+		strg_mgr := NewStorageManager(dataFile, NewHeapPageAllocator(8192))
 		tab := concurrency.NewLockTable()
 		bufferCap := 32
 		buf := NewBufferSlotManager(strg_mgr, bufferCap, 8192)
@@ -22,7 +21,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 		threads := 16
 		for i := 0; i < keys; i++ {
 			pos := int64(i * 8192)
-			page := storage.AllocatePage(8192)
+			page := AllocatePage(8192)
 			page.AppendData([]byte{byte(i)})
 			block, _ := page.MarshalBinary()
 			strg_mgr.WriteBlock(pos, block)
@@ -77,7 +76,7 @@ func TestBuffer_FetchFlush(t *testing.T) {
 
 func TestBuffer_FetchFlushDeallocate(t *testing.T) {
 	execErr := utils.FileScopedExec("somefile.bin", func(dataFile *os.File) error {
-		strg_mgr := storage.NewStorageManager(dataFile)
+		strg_mgr := NewStorageManager(dataFile)
 		tab := concurrency.NewLockTable()
 		bufferCap := 32
 		buf := NewBufferSlotManager(strg_mgr, bufferCap, 8192)
@@ -86,7 +85,7 @@ func TestBuffer_FetchFlushDeallocate(t *testing.T) {
 		threads := 16
 		for i := 0; i < keys; i++ {
 			pos := int64(i * 8192)
-			page := storage.AllocatePage(8192)
+			page := AllocatePage(8192)
 			page.AppendData([]byte{byte(i)})
 			block, _ := page.MarshalBinary()
 			strg_mgr.WriteBlock(pos, block)
