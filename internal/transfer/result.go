@@ -1,14 +1,9 @@
 package transfer
 
-import (
-	"bytes"
-	"encoding/binary"
-)
-
 const (
-	OkResultCode = 0
+	OkResultCode    = 0
 	ValueResultCode = 1
-	ErrResultCode = 2
+	ErrResultCode   = 2
 )
 
 type Result struct {
@@ -30,11 +25,15 @@ func ValueResult(value []byte) *Result {
 	return r
 }
 
-func ErrResult(err error) *Result {
+func StrErrResult(err string) *Result {
 	r := new(Result)
 	r.code = ErrResultCode
-	r.err = err.Error()
+	r.err = err
 	return r
+}
+
+func ErrResult(err error) *Result {
+	return StrErrResult(err.Error())
 }
 
 func (r *Result) Ok() bool {
@@ -53,50 +52,22 @@ func (r *Result) Error() string {
 	return r.err
 }
 
-func (r *Result) MarshalBinary() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	if writeErr := binary.Write(buf, binary.LittleEndian, byte(r.code)); writeErr != nil {
-		return nil, writeErr
-	}
-	valueBytes := []byte{}
-	if r.value != nil {
-		valueBytes = r.value
-	}
-	if writeErr := binary.Write(buf, binary.LittleEndian, int32(len(valueBytes))); writeErr != nil {
-		return nil, writeErr
-	}
-	if _, writeErr := buf.Write(valueBytes); writeErr != nil {
-		return nil, writeErr
-	}
-	errBytes := []byte(r.err)
-	if writeErr := binary.Write(buf, binary.LittleEndian, int32(len(errBytes))); writeErr != nil {
-		return nil, writeErr
-	}
-	if _, writeErr := buf.Write(errBytes); writeErr != nil {
-		return nil, writeErr
-	}
-	if _, writeErr := buf.WriteString("\n"); writeErr != nil {
-		return nil, writeErr
-	}
-	return buf.Bytes(), nil
-}
+type resultBuilder func([]byte) *Result
 
-func (r *Result) UnmarshalBinary(data []byte) error {
-	buf := bytes.NewBuffer(data)
-	var code byte
-	if readErr := binary.Read(buf, binary.LittleEndian, &code); readErr != nil {
-		return readErr
+func ResultFactory(code int) resultBuilder {
+	switch code {
+	case OkResultCode:
+		return func(_ []byte) *Result {
+			return OkResult()
+		}
+	case ValueResultCode:
+		return func(value []byte) *Result {
+			return ValueResult(value)
+		}
+	case ErrResultCode:
+		return func(err []byte) *Result {
+			return StrErrResult(string(err))
+		}
 	}
-	r.code = int(code)
-	var valueLen int32
-	if readErr := binary.Read(buf, binary.LittleEndian, &valueLen); readErr != nil {
-		return readErr
-	}
-	r.value = buf.Next(int(valueLen))
-	var errLen int32
-	if readErr := binary.Read(buf, binary.LittleEndian, &errLen); readErr != nil {
-		return readErr
-	}
-	r.err = string(buf.Next(int(errLen)))
 	return nil
 }

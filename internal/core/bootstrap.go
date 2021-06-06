@@ -4,8 +4,8 @@ import (
 	"dbms/internal/config"
 	"dbms/internal/core/access/bp_tree"
 	"dbms/internal/core/concurrency"
-	"dbms/pkg"
 	bpAdapter "dbms/internal/core/storage/adapters/bp_tree"
+	"dbms/pkg"
 	"log"
 	"os"
 )

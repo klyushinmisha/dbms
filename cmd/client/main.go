@@ -1,22 +1,21 @@
 package main
 
 import (
-	"os"
 	"bufio"
-	"fmt"
-	"dbms/pkg/client"
-	"io"
-	"dbms/internal/transfer"
-	"flag"
-	"dbms/pkg"
 	"dbms/internal/parser"
+	"dbms/internal/transfer"
+	"dbms/pkg"
+	"dbms/pkg/client"
+	"flag"
+	"fmt"
+	"io"
+	"os"
 )
 
 var (
 	host string
 	port uint
 )
-
 
 func init() {
 	flag.StringVar(&host, "host", "localhost", "DBMS's hostname")

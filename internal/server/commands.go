@@ -7,7 +7,6 @@ import (
 	dataAdapter "dbms/internal/core/storage/adapters/data"
 	"dbms/internal/transfer"
 	"log"
-	"dbms/internal/parser"
 )
 
 type Command func() *transfer.Result
@@ -24,15 +23,15 @@ func NewCommandFactory(txProxy *TxProxy) *CommandFactory {
 
 func (f *CommandFactory) Create(cmd transfer.Cmd) Command {
 	switch cmd.Type {
-	case parser.BegShCmd:
+	case transfer.BegShCmdType:
 		return createBeginCommand(f.txProxy, concurrency.SharedMode)
-	case parser.BegExCmd:
+	case transfer.BegExCmdType:
 		return createBeginCommand(f.txProxy, concurrency.ExclusiveMode)
-	case parser.CommitCmd:
+	case transfer.CommitCmdType:
 		return createCommitCommand(f.txProxy)
-	case parser.AbortCmd:
+	case transfer.AbortCmdType:
 		return createAbortCommand(f.txProxy)
-	case parser.HelpCmd:
+	case transfer.HelpCmdType:
 		return createHelpCommand()
 	default:
 		return createDataManipulationCommand(f.txProxy, cmd)
@@ -94,9 +93,9 @@ func createDataManipulationCommand(txProxy *TxProxy, cmd transfer.Cmd) Command {
 	f.txProxy = txProxy
 	f.cmd = cmd
 	f.commandsMap = map[int]encapsulatedCommand{
-		parser.GetCmd: f.getCommand,
-		parser.SetCmd: f.setCommand,
-		parser.DelCmd: f.delCommand,
+		transfer.GetCmdType: f.getCommand,
+		transfer.SetCmdType: f.setCommand,
+		transfer.DelCmdType: f.delCommand,
 	}
 	return f.execute
 }

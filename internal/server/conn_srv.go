@@ -1,12 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"dbms/internal/config"
 	"dbms/internal/core/transaction"
 	"dbms/internal/parser"
 	"dbms/internal/transfer"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 )
@@ -91,15 +93,43 @@ func (s *ConnServer) Run() {
 	}
 }
 
+type CmdIterator struct {
+	recv *transfer.ObjectReader
+}
+
+func (i *CmdIterator) Next() (*transfer.Cmd, error) {
+	cmdObj := new(transfer.CmdObject)
+	err := i.recv.ReadObject(cmdObj)
+	if err != nil {
+		return nil, err
+	}
+	cmd := cmdObj.ToCmd()
+	return &cmd, err
+}
+
 func (s *ConnServer) serve(conn net.Conn) {
 	txProxy := NewTxProxy(s.txMgr)
 	defer txProxy.Abort()
 	cmdFact := NewCommandFactory(txProxy)
-	DumbRawCmdStreamProcessorFromConn(conn).Pipe(func(rawCmd string) *transfer.Result {
-		if cmd, err := s.parser.Parse(rawCmd); err != nil {
-			return transfer.ErrResult(err)
-		} else {
-			return cmdFact.Create(*cmd)()
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+	recv := transfer.NewObjectReader(reader)
+	send := transfer.NewObjectWriter(writer)
+	cmdIter := CmdIterator{recv}
+	for {
+		cmd, err := cmdIter.Next()
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			log.Panic(err)
 		}
-	})
+		res := cmdFact.Create(*cmd)()
+		resObj := new(transfer.ResultObject)
+		resObj.FromResult(res)
+		err = send.WriteObject(resObj)
+		if err != nil {
+			log.Panic(err)
+		}
+		writer.Flush()
+	}
 }

@@ -10,17 +10,6 @@ var (
 	ErrInvalidCmdStruct = errors.New("Invalid command")
 )
 
-const (
-	GetCmd    = 0
-	SetCmd    = 1
-	DelCmd    = 2
-	BegShCmd  = 3
-	BegExCmd  = 4
-	CommitCmd = 5
-	AbortCmd  = 6
-	HelpCmd   = 7
-)
-
 type Parser interface {
 	Validate(string) error
 	Parse(string) (*transfer.Cmd, error)
@@ -57,24 +46,24 @@ type DumbSingleLineParser struct {
 func NewDumbSingleLineParser() *DumbSingleLineParser {
 	p := new(DumbSingleLineParser)
 	p.patterns = map[int]*regexp.Regexp{
-		GetCmd:    regexp.MustCompile(`^GET ([^\s]+)$`),
-		SetCmd:    regexp.MustCompile(`^SET ([^\s]+) ([^\s]+)$`),
-		DelCmd:    regexp.MustCompile(`^DEL ([^\s]+)$`),
-		BegShCmd:  regexp.MustCompile(`^BEGIN SHARED$`),
-		BegExCmd:  regexp.MustCompile(`^BEGIN EXCLUSIVE$`),
-		CommitCmd: regexp.MustCompile(`^COMMIT$`),
-		AbortCmd:  regexp.MustCompile(`^ABORT$`),
-		HelpCmd:   regexp.MustCompile(`^HELP$`),
+		transfer.GetCmdType:    regexp.MustCompile(`^GET ([^\s]+)$`),
+		transfer.SetCmdType:    regexp.MustCompile(`^SET ([^\s]+) ([^\s]+)$`),
+		transfer.DelCmdType:    regexp.MustCompile(`^DEL ([^\s]+)$`),
+		transfer.BegShCmdType:  regexp.MustCompile(`^BEGIN SHARED$`),
+		transfer.BegExCmdType:  regexp.MustCompile(`^BEGIN EXCLUSIVE$`),
+		transfer.CommitCmdType: regexp.MustCompile(`^COMMIT$`),
+		transfer.AbortCmdType:  regexp.MustCompile(`^ABORT$`),
+		transfer.HelpCmdType:   regexp.MustCompile(`^HELP$`),
 	}
 	p.parseStrategies = map[int]parseStrategy{
-		GetCmd:    oneArgParseStrategy,
-		SetCmd:    twoArgsParseStrategy,
-		DelCmd:    oneArgParseStrategy,
-		BegShCmd:  noArgsParseStrategy,
-		BegExCmd:  noArgsParseStrategy,
-		CommitCmd: noArgsParseStrategy,
-		AbortCmd:  noArgsParseStrategy,
-		HelpCmd:   noArgsParseStrategy,
+		transfer.GetCmdType:    oneArgParseStrategy,
+		transfer.SetCmdType:    twoArgsParseStrategy,
+		transfer.DelCmdType:    oneArgParseStrategy,
+		transfer.BegShCmdType:  noArgsParseStrategy,
+		transfer.BegExCmdType:  noArgsParseStrategy,
+		transfer.CommitCmdType: noArgsParseStrategy,
+		transfer.AbortCmdType:  noArgsParseStrategy,
+		transfer.HelpCmdType:   noArgsParseStrategy,
 	}
 	return p
 }
