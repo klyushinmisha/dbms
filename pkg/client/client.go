@@ -5,6 +5,7 @@ import (
 	"dbms/internal/parser"
 	"dbms/internal/transfer"
 	"net"
+	"regexp"
 	"strings"
 )
 
@@ -106,26 +107,15 @@ func (c *DBMSClient) execCmd(cmd transfer.Cmd) (*transfer.Result, error) {
 	return resObj.ToResult(), nil
 }
 
-/*
+var spaceRegex = regexp.MustCompile(`\s+`)
 
- else if cmd.Type == parser.HelpCmdType {
-		return transfer.ValueResult([]byte(`Commands structure:
-  Data manipulation commands:
-    GET key         - finds value associated with key
-    SET key value   - sets value associated with key
-    DEL key         - removes value associated with key
-  Transaction management commands:
-    BEGIN SHARED    - starts new transaction with per-operation isolation
-    BEGIN EXCLUSIVE - starts new transaction with per-transation isolation
-    COMMIT          - commits active transaction
-    ABORT           - aborts active transaction`),
-		), nil
-	}
-
-*/
+func preprocessRawCmd(rawCmd string) string {
+	noWideSpacesRawCmd := spaceRegex.ReplaceAllString(rawCmd, " ")
+	return strings.TrimSpace(noWideSpacesRawCmd)
+}
 
 func (c *DBMSClient) Exec(rawCmd string) (*transfer.Result, error) {
-	rawCmd = strings.TrimSpace(rawCmd)
+	rawCmd = preprocessRawCmd(rawCmd)
 	cmd, err := c.parser.Parse(rawCmd)
 	if err != nil {
 		return nil, err

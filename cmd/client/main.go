@@ -22,6 +22,24 @@ func init() {
 	flag.UintVar(&port, "port", 8080, "DBMS's TCP-port")
 }
 
+func createResMsgExtractor() func(res *transfer.Result) string {
+	codeMap := map[int]func(res *transfer.Result) string{
+		transfer.OkResultCode:    func(_ *transfer.Result) string { return "OK" },
+		transfer.ValueResultCode: func(res *transfer.Result) string { return string(res.Value()) },
+		transfer.ErrResultCode:   func(res *transfer.Result) string { return res.Error() },
+	}
+	return func(res *transfer.Result) string {
+		return codeMap[res.Type()](res)
+	}
+}
+
+func printSplash() {
+	fmt.Printf(`DBMS (version %s)
+Server: %s
+Port: %d
+`, pkg.Version, host, port)
+}
+
 // simple REPL for manual tests
 func main() {
 	flag.Parse()
@@ -31,37 +49,46 @@ func main() {
 		return
 	}
 	defer dbClient.Finalize()
+	ext := createResMsgExtractor()
 	reader := bufio.NewReader(os.Stdin)
-	// TODO: maybe check major version for server before REPL starts?
-	fmt.Printf(`DBMS (version %s)
-Server: %s
-Port: %d
-`, pkg.Version, host, port)
+	printSplash()
 	for {
-		var msg string
 		fmt.Print("> ")
 		rawStrCmd, _ := reader.ReadString('\n')
+		// TODO: process help command
 		res, err := dbClient.Exec(rawStrCmd)
-		if err == io.EOF {
+		switch err {
+		case io.EOF:
+			fmt.Println("Server connection has been closed")
 			return
-		} else if err == parser.ErrInvalidCmdStruct {
+		case parser.ErrInvalidCmdStruct:
 			fmt.Println(err)
 			continue
-		} else if err != nil {
+		case nil:
+			// noop
+			break
+		default:
 			fmt.Println(err)
 			return
 		}
-		switch res.Type() {
-		case transfer.OkResultCode:
-			msg = "OK"
-			break
-		case transfer.ValueResultCode:
-			msg = string(res.Value())
-			break
-		case transfer.ErrResultCode:
-			msg = res.Error()
-			break
-		}
-		fmt.Println(msg)
+		fmt.Println(ext(res))
 	}
 }
+
+/*
+
+  if cmd.Type == parser.HelpCmdType {
+		return transfer.ValueResult([]byte(`Commands structure:
+  Data manipulation commands:
+    GET key         - finds value associated with key
+    SET key value   - sets value associated with key
+    DEL key         - removes value associated with key
+  Transaction management commands:
+    BEGIN SHARED    - starts new transaction with per-operation isolation
+    BEGIN EXCLUSIVE - starts new transaction with per-transation isolation
+    COMMIT          - commits active transaction
+    ABORT           - aborts active transaction`),
+		), nil
+	}
+
+*/
