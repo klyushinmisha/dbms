@@ -69,8 +69,8 @@ type DBMSClient struct {
 	conn   net.Conn
 	parser parser.Parser
 	writer *bufio.Writer
-	send   *transfer.ObjectWriter
-	recv   *transfer.ObjectReader
+	send   transfer.ObjectWriter
+	recv   transfer.ObjectReader
 }
 
 func Connect(host string) (*DBMSClient, error) {
@@ -83,8 +83,8 @@ func Connect(host string) (*DBMSClient, error) {
 	c.conn = conn
 	c.parser = parser.NewDumbSingleLineParser()
 	c.writer = bufio.NewWriter(conn)
-	c.send = transfer.NewObjectWriter(c.writer)
-	c.recv = transfer.NewObjectReader(reader)
+	c.send = transfer.NewLEObjectWriter(c.writer)
+	c.recv = transfer.NewLEObjectReader(reader)
 	return c, nil
 }
 

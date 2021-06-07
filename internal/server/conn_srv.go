@@ -94,7 +94,7 @@ func (s *ConnServer) Run() {
 }
 
 type CmdIterator struct {
-	recv *transfer.ObjectReader
+	recv transfer.ObjectReader
 }
 
 func (i *CmdIterator) Next() (*transfer.Cmd, error) {
@@ -113,8 +113,8 @@ func (s *ConnServer) serve(conn net.Conn) {
 	cmdFact := NewCommandFactory(txProxy)
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
-	recv := transfer.NewObjectReader(reader)
-	send := transfer.NewObjectWriter(writer)
+	recv := transfer.NewLEObjectReader(reader)
+	send := transfer.NewLEObjectWriter(writer)
 	cmdIter := CmdIterator{recv}
 	for {
 		cmd, err := cmdIter.Next()

@@ -24,17 +24,26 @@ type Object interface {
 	Create(data []byte)
 }
 
-type ObjectReader struct {
+type ObjectReader interface {
+	ReadObject(obj Object) error
+}
+
+type ObjectWriter interface {
+	WriteObject(obj Object) error
+}
+
+// LEObjectReader is a ObjectReader implementation for little endian
+type LEObjectReader struct {
 	r io.Reader
 }
 
-func NewObjectReader(r io.Reader) *ObjectReader {
-	or := new(ObjectReader)
+func NewLEObjectReader(r io.Reader) *LEObjectReader {
+	or := new(LEObjectReader)
 	or.r = r
 	return or
 }
 
-func (or *ObjectReader) ReadObject(obj Object) error {
+func (or *LEObjectReader) ReadObject(obj Object) error {
 	var hdr header
 	if err := binary.Read(or.r, binary.LittleEndian, &hdr); err != nil {
 		return err
@@ -48,17 +57,17 @@ func (or *ObjectReader) ReadObject(obj Object) error {
 	return nil
 }
 
-type ObjectWriter struct {
+type LEObjectWriter struct {
 	w io.Writer
 }
 
-func NewObjectWriter(w io.Writer) *ObjectWriter {
-	ow := new(ObjectWriter)
+func NewLEObjectWriter(w io.Writer) *LEObjectWriter {
+	ow := new(LEObjectWriter)
 	ow.w = w
 	return ow
 }
 
-func (ow *ObjectWriter) WriteObject(obj Object) error {
+func (ow *LEObjectWriter) WriteObject(obj Object) error {
 	if err := binary.Write(ow.w, binary.LittleEndian, obj.Header()); err != nil {
 		return err
 	}
