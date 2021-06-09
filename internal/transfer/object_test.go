@@ -11,10 +11,10 @@ func TestObject_Cmd(t *testing.T) {
 	cmd := GetCmd("HELLO")
 	cmdObj := new(CmdObject)
 	cmdObj.FromCmd(cmd)
-	output := ObjectWriter{bytes.NewBuffer(data[0:0])}
+	output := LEObjectWriter{bytes.NewBuffer(data[0:0])}
 	output.WriteObject(cmdObj)
 	otherCmdObj := new(CmdObject)
-	input := ObjectReader{bytes.NewReader(data)}
+	input := LEObjectReader{bytes.NewReader(data)}
 	input.ReadObject(otherCmdObj)
 	assert.Equal(t, otherCmdObj.ToCmd(), cmd)
 }
@@ -24,10 +24,10 @@ func TestObject_Result(t *testing.T) {
 	res := StrErrResult("Error")
 	resObj := new(ResultObject)
 	resObj.FromResult(res)
-	output := ObjectWriter{bytes.NewBuffer(data[0:0])}
+	output := LEObjectWriter{bytes.NewBuffer(data[0:0])}
 	output.WriteObject(resObj)
 	otherResObj := new(ResultObject)
-	input := ObjectReader{bytes.NewReader(data)}
+	input := LEObjectReader{bytes.NewReader(data)}
 	input.ReadObject(otherResObj)
 	assert.Equal(t, otherResObj.ToResult(), res)
 }
