@@ -40,7 +40,7 @@ Port: %d
 `, pkg.Version, host, port)
 }
 
-// simple REPL for manual tests
+// main is a simple REPL for manual tests
 func main() {
 	flag.Parse()
 	dbClient, err := client.Connect(fmt.Sprintf("%s:%d", host, port))
@@ -74,21 +74,3 @@ func main() {
 		fmt.Println(ext(res))
 	}
 }
-
-/*
-
-  if cmd.Type == parser.HelpCmdType {
-		return transfer.ValueResult([]byte(`Commands structure:
-  Data manipulation commands:
-    GET key         - finds value associated with key
-    SET key value   - sets value associated with key
-    DEL key         - removes value associated with key
-  Transaction management commands:
-    BEGIN SHARED    - starts new transaction with per-operation isolation
-    BEGIN EXCLUSIVE - starts new transaction with per-transation isolation
-    COMMIT          - commits active transaction
-    ABORT           - aborts active transaction`),
-		), nil
-	}
-
-*/
