@@ -15,7 +15,7 @@ import (
 var urlFactory config.ServerUrlFactory
 
 // TestMain runs DBMS server in background before requests execution
-// placed in benchmarks to be able to run in tests and benchmarks either
+// NOTE: placed in this file for ability to run it in tests and benchmarks either
 func TestMain(m *testing.M) {
 	sr := new(runners.DefaultScopedServerRunner)
 	urlFactory = sr
