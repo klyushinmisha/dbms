@@ -77,7 +77,7 @@ func (m *BootstrapManager) initStorage() {
 	m.openStrg()
 	// now TxMgr can access storage
 	tx := m.cfgr.TxMgr().InitTx(concurrency.ExclusiveMode)
-	bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(tx)).Init()
+	bp_tree.NewDefaultBPTree(bpAdapter.NewBPTreeAdapter(tx)).Init()
 	tx.Commit()
 	log.Printf("Initialized storage %s", m.cfg.DataPath())
 }

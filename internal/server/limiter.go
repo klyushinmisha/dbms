@@ -16,7 +16,8 @@ func NewConnLimiter(ln net.Listener, maxConn int) *ConnLimiter {
 	l := new(ConnLimiter)
 	l.ln = ln
 	l.sem = semaphore.NewWeighted(int64(maxConn))
-	l.ctx = context.TODO()
+	// no deadline or cancel expected; goroutine must be parked until semaphore can be acquired
+	l.ctx = context.Background()
 	return l
 }
 

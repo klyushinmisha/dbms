@@ -105,7 +105,7 @@ func (f *dataManipulationCommandState) execute() *transfer.Result {
 		f.txProxy.Init(concurrency.SharedMode)
 		defer f.txProxy.Commit()
 	}
-	f.index = bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(f.txProxy.Tx()))
+	f.index = bp_tree.NewDefaultBPTree(bpAdapter.NewBPTreeAdapter(f.txProxy.Tx()))
 	f.da = dataAdapter.NewDataAdapter(f.txProxy.Tx())
 	defer func() {
 		if err := recover(); err == concurrency.ErrTxLockTimeout {

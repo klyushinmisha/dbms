@@ -9,25 +9,31 @@ import (
 	"sync"
 )
 
-const (
-	processing = 0
-	committed  = 1
-	aborted    = 2
-)
-
-// Tx is a single-thread ACID transaction
-type Tx struct {
-	*TxManager
-	id       int
-	lockMode int
-	status   int
-	// lockedPages is a set of pages positions
-	// TODO: use regular map
-	lockedPages sync.Map
+type DataCommands interface {
+	// props
+	NoDataFound() bool
+	// methods
+	AllocatePage() *storage.HeapPage
+	ReadPageAtPos(pos int64) *storage.HeapPage
+	WritePageAtPos(page *storage.HeapPage, pos int64)
+	WritePage(page *storage.HeapPage) int64
 }
 
-func (t *Tx) Id() int {
-	return t.id
+type ConcurrencyControlCommands interface {
+	DowngradeLocks()
+}
+
+type TxCommands interface {
+	CommitNoLog()
+	Commit()
+	Abort()
+}
+
+type Tx interface {
+	Id() int
+	DataCommands
+	ConcurrencyControlCommands
+	TxCommands
 }
 
 type TxManager struct {
@@ -59,25 +65,45 @@ func (m *TxManager) SetIdCounter(idCounter int) {
 	m.idCtr.Init(idCounter)
 }
 
-func (m *TxManager) InitTx(lockMode int) *Tx {
+func (m *TxManager) InitTx(lockMode int) Tx {
 	return m.InitTxWithId(m.idCtr.Incr(), lockMode)
 }
 
-func (m *TxManager) InitTxWithId(id int, lockMode int) *Tx {
-	tx := new(Tx)
+func (m *TxManager) InitTxWithId(id int, lockMode int) Tx {
+	tx := new(concreteTx)
 	tx.id = id
 	tx.lockMode = lockMode
 	tx.TxManager = m
 	return tx
 }
 
-func (tx *Tx) validateTxStatus() {
+const (
+	processing = 0
+	committed  = 1
+	aborted    = 2
+)
+
+type concreteTx struct {
+	*TxManager
+	id       int
+	lockMode int
+	status   int
+	// lockedPages is a set of pages positions
+	// TODO: use regular map
+	lockedPages sync.Map
+}
+
+func (t *concreteTx) Id() int {
+	return t.id
+}
+
+func (tx *concreteTx) validateTxStatus() {
 	if tx.status != processing {
 		log.Panic("transaction processing finished")
 	}
 }
 
-func (tx *Tx) fetchAndLockPage(pos int64) {
+func (tx *concreteTx) fetchAndLockPage(pos int64) {
 	if _, found := tx.lockedPages.Load(pos); found {
 		tx.sharedLockTable.UpgradeLock(pos, tx.id)
 		return
@@ -88,56 +114,58 @@ func (tx *Tx) fetchAndLockPage(pos int64) {
 	tx.lockedPages.Store(pos, struct{}{})
 }
 
-func (tx *Tx) DowngradeLocks() {
+func (tx *concreteTx) DowngradeLocks() {
 	tx.lockedPages.Range(func(pos, _ interface{}) bool {
 		tx.sharedLockTable.DowngradeLock(pos.(int64))
 		return true
 	})
 }
 
-func (tx *Tx) AllocatePage() *storage.HeapPage {
+func (tx *concreteTx) AllocatePage() *storage.HeapPage {
 	return tx.a.AllocatePage()
 }
 
-func (tx *Tx) ReadPageAtPos(pos int64) *storage.HeapPage {
+func (tx *concreteTx) ReadPageAtPos(pos int64) *storage.HeapPage {
 	tx.validateTxStatus()
 	tx.fetchAndLockPage(pos)
 	return tx.bufSlotMgr.ReadPageAtPos(pos)
 }
 
-func (tx *Tx) WritePageAtPos(page *storage.HeapPage, pos int64) {
+func (tx *concreteTx) WritePageAtPos(page *storage.HeapPage, pos int64) {
 	tx.validateTxStatus()
 	tx.fetchAndLockPage(pos)
 	tx.sharedLockTable.UpgradeLock(pos, tx.id)
 	tx.bufSlotMgr.WritePageAtPos(page, pos)
 }
 
-func (tx *Tx) WritePage(page *storage.HeapPage) int64 {
+func (tx *concreteTx) WritePage(page *storage.HeapPage) int64 {
 	tx.validateTxStatus()
 	pos := tx.strgMgr.Extend()
 	tx.WritePageAtPos(page, pos)
 	return pos
 }
 
-func (tx *Tx) CommitNoLog() {
-	tx.lockedPages.Range(func(pos, _ interface{}) bool {
-		tx.bufSlotMgr.Flush(pos.(int64))
-		tx.bufSlotMgr.Unpin(pos.(int64))
-		tx.sharedLockTable.Unlock(pos.(int64))
+func (tx *concreteTx) CommitNoLog() {
+	tx.lockedPages.Range(func(ipos, _ interface{}) bool {
+		pos := ipos.(int64)
+		tx.bufSlotMgr.Flush(pos)
+		tx.bufSlotMgr.Unpin(pos)
+		tx.sharedLockTable.Unlock(pos)
 		return true
 	})
 	tx.strgMgr.Flush()
 	tx.logMgr.Release(tx.Id())
 }
 
-func (tx *Tx) Commit() {
-	tx.lockedPages.Range(func(pos, _ interface{}) bool {
-		if page := tx.bufSlotMgr.ReadPageIfDirty(pos.(int64)); page != nil {
+func (tx *concreteTx) Commit() {
+	tx.lockedPages.Range(func(ipos, _ interface{}) bool {
+		pos := ipos.(int64)
+		if page := tx.bufSlotMgr.ReadPageIfDirty(pos); page != nil {
 			snapshot, err := page.MarshalBinary()
 			if err != nil {
 				log.Panic(err)
 			}
-			tx.logMgr.LogSnapshot(tx.id, pos.(int64), snapshot)
+			tx.logMgr.LogSnapshot(tx.id, pos, snapshot)
 		}
 		return true
 	})
@@ -147,17 +175,18 @@ func (tx *Tx) Commit() {
 	tx.status = committed
 }
 
-func (tx *Tx) Abort() {
-	tx.lockedPages.Range(func(pos, _ interface{}) bool {
-		tx.bufSlotMgr.Unpin(pos.(int64))
-		tx.bufSlotMgr.Deallocate(pos.(int64))
-		tx.sharedLockTable.Unlock(pos.(int64))
+func (tx *concreteTx) Abort() {
+	tx.lockedPages.Range(func(ipos, _ interface{}) bool {
+		pos := ipos.(int64)
+		tx.bufSlotMgr.Unpin(pos)
+		tx.bufSlotMgr.Deallocate(pos)
+		tx.sharedLockTable.Unlock(pos)
 		return true
 	})
 	tx.logMgr.Release(tx.Id())
 	tx.status = aborted
 }
 
-func (tx *Tx) NoDataFound() bool {
+func (tx *concreteTx) NoDataFound() bool {
 	return tx.strgMgr.Empty()
 }

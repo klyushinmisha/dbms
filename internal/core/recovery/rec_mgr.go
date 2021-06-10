@@ -20,7 +20,7 @@ func NewRecoveryManager(logMgr *logging.LogManager) *RecoveryManager {
 
 func (m *RecoveryManager) RollForward(txMgr *transaction.TxManager) {
 	var maxTxId int
-	txs := make(map[int]*transaction.Tx)
+	txs := make(map[int]transaction.Tx)
 	segIter := m.logMgr.SegmentIterator()
 	for seg := segIter.Next(); seg != nil; seg = segIter.Next() {
 		logIter := seg.LogIterator()

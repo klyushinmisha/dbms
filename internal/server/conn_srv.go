@@ -16,7 +16,7 @@ import (
 // TxProxy handles tx lifecycle (init and finalization)
 type TxProxy struct {
 	txMgr *transaction.TxManager
-	tx    *transaction.Tx
+	tx    transaction.Tx
 }
 
 func NewTxProxy(txMgr *transaction.TxManager) *TxProxy {
@@ -25,7 +25,7 @@ func NewTxProxy(txMgr *transaction.TxManager) *TxProxy {
 	return p
 }
 
-func (p *TxProxy) Tx() *transaction.Tx {
+func (p *TxProxy) Tx() transaction.Tx {
 	return p.tx
 }
 

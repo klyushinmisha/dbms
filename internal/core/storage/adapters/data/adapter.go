@@ -11,10 +11,10 @@ var (
 )
 
 type DataAdapter struct {
-	tx *transaction.Tx
+	tx transaction.Tx
 }
 
-func NewDataAdapter(tx *transaction.Tx) *DataAdapter {
+func NewDataAdapter(tx transaction.Tx) *DataAdapter {
 	var da DataAdapter
 	da.tx = tx
 	return &da

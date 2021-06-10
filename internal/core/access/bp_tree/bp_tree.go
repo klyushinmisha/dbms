@@ -10,6 +10,8 @@ var (
 	ErrKeyNotFound = errors.New("Not found")
 )
 
+const DefaultT = 100
+
 // locking inspired by Lehman and Yao whitepaper (Efficient Locking for Concurrent Operations on B-Trees)
 type BPTree struct {
 	// deleteLock allows exclusive deletes or concurrent insert/reads;
@@ -29,6 +31,10 @@ func NewBPTree(t int, ba *bp_tree.BPTreeAdapter) *BPTree {
 	tree.t = t
 	tree.rw = NewBPTreeReaderWriter(t, ba)
 	return &tree
+}
+
+func NewDefaultBPTree(ba *bp_tree.BPTreeAdapter) *BPTree {
+	return NewBPTree(DefaultT, ba)
 }
 
 func (t *BPTree) Init() {
