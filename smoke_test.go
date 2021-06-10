@@ -13,12 +13,6 @@ import (
 
 // TestDBMS_TxSetCommit is a dumb test if tx commit is applied to store
 func TestDBMS_TxSetCommit(t *testing.T) {
-	dbClient, err := client.Connect(urlFactory.BuildUrl())
-	if err != nil {
-		log.Panic(err)
-	}
-	defer dbClient.Finalize()
-
 	notExpected := []byte("some-val")
 	dbClient.Del("key")
 	setAndCheckBoilerplate(dbClient, "key", notExpected, t)
@@ -37,12 +31,6 @@ func TestDBMS_TxSetCommit(t *testing.T) {
 
 // TestDBMS_TxSetCommit is a dumb test if tx abort deallocated all changed data from buffer
 func TestDBMS_TxSetAbort(t *testing.T) {
-	dbClient, err := client.Connect(urlFactory.BuildUrl())
-	if err != nil {
-		log.Panic(err)
-	}
-	defer dbClient.Finalize()
-
 	expected := []byte("some-val")
 	dbClient.Del("key")
 	setAndCheckBoilerplate(dbClient, "key", expected, t)
