@@ -24,10 +24,10 @@ func TestLogManager_Log(t *testing.T) {
 			logMgr.LogSnapshot(i, 0, snapshot)
 		}
 		logMgr.Flush()
-		segIter := NewSegmentIterator(segMgr)
+		segIter := SegmentIterator{segments: segMgr.segments}
 		i := 0
 		for seg := segIter.Next(); seg != nil; seg = segIter.Next() {
-			logIter := NewLogIterator(seg)
+			logIter := LogIterator{seg}
 			for r, err := logIter.Next(); err != io.EOF; r, err = logIter.Next() {
 				assert.Equal(t, r.Type(), UpdateRecord)
 				assert.Equal(t, r.TxId(), i)

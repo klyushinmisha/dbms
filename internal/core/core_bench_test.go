@@ -7,11 +7,18 @@ import (
 	"strconv"
 	"dbms/internal/config"
 	"dbms/internal/core/concurrency"
+	"dbms/internal/core/transaction"
 	"dbms/internal/core/access/bp_tree"
 	bpAdapter "dbms/internal/core/storage/adapters/bp_tree"
 )
 
 const workers = 1
+
+func txInsert(tx transaction.Tx, key string, value int64) {
+	tree := bp_tree.NewDefaultBPTree(bpAdapter.NewBPTreeAdapter(tx))
+	defer tx.Commit()
+	tree.Insert(key, int64(1))
+}
 
 func Benchmark_CoreInsert(b *testing.B) {
 	// prepare
@@ -36,10 +43,11 @@ func Benchmark_CoreInsert(b *testing.B) {
 		wg.Add(workers)
 		for i := 0; i < workers; i++ {
 			go func(key string){
-				tx := coreCfgr.TxMgr().InitTx(concurrency.ExclusiveMode)
-				tree := bp_tree.NewBPTree(100, bpAdapter.NewBPTreeAdapter(tx))
-				tree.Insert(key, int64(1))
-				tx.Commit()
+				txInsert(
+					coreCfgr.TxMgr().InitTx(concurrency.ExclusiveMode),
+					key,
+					int64(1),
+				)
 				wg.Done()
 			}(strconv.Itoa(i))
 		}

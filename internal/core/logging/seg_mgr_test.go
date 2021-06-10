@@ -23,9 +23,9 @@ func TestSegmentManager_Log(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		segMgr.Log(txId, data)
 	}
-	segIter := NewSegmentIterator(segMgr)
+	segIter := SegmentIterator{segments: segMgr.segments}
 	for seg := segIter.Next(); seg != nil; seg = segIter.Next() {
-		logIter := NewLogIterator(seg)
+		logIter := LogIterator{seg}
 		for r, err := logIter.Next(); err != io.EOF; r, err = logIter.Next() {
 			log.Print(r)
 		}
