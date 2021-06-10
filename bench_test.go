@@ -1,7 +1,7 @@
 package dbms
 
 /*
-TODO: inject logger via interface to prevent logging durting benchmarks
+TODO: inject logger via interface to prevent logging during benchmarks
 */
 
 import (
