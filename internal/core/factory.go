@@ -10,7 +10,7 @@ import (
 	"os"
 )
 
-type DBMSCoreConfigurator interface {
+type DBMSCoreFactory interface {
 	TxMgr() *transaction.TxManager
 	SegMgr() *logging.SegmentManager
 	LogMgr() *logging.LogManager
@@ -19,7 +19,7 @@ type DBMSCoreConfigurator interface {
 }
 
 // dataFile must be unique per configuration to prevent multiple access to same files
-type DefaultDBMSCoreConfigurator struct {
+type DefaultDBMSCoreFactory struct {
 	cfg        *config.CoreConfig
 	dataFile   *os.File
 	strgMgr    *storage.StorageManager
@@ -30,14 +30,14 @@ type DefaultDBMSCoreConfigurator struct {
 	btstpMgr   *BootstrapManager
 }
 
-func NewDefaultDBMSCoreConfigurator(cfg *config.CoreConfig) *DefaultDBMSCoreConfigurator {
-	c := new(DefaultDBMSCoreConfigurator)
+func NewDefaultDBMSCoreFactory(cfg *config.CoreConfig) *DefaultDBMSCoreFactory {
+	c := new(DefaultDBMSCoreFactory)
 	c.cfg = cfg
 	c.logMgr = nil
 	return c
 }
 
-func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
+func (c *DefaultDBMSCoreFactory) TxMgr() *transaction.TxManager {
 	// singleton
 	if c.txMgr == nil {
 		c.strgMgr = storage.NewStorageManager(c.BtstpMgr().StrgFile(), storage.NewHeapPageAllocator(c.cfg.PageSize))
@@ -57,7 +57,7 @@ func (c *DefaultDBMSCoreConfigurator) TxMgr() *transaction.TxManager {
 	return c.txMgr
 }
 
-func (c *DefaultDBMSCoreConfigurator) SegMgr() *logging.SegmentManager {
+func (c *DefaultDBMSCoreFactory) SegMgr() *logging.SegmentManager {
 	// singleton
 	if c.segMgr == nil {
 		c.segMgr = logging.NewSegmentManager(c.cfg.LogPath(), c.cfg.LogSegCap)
@@ -65,7 +65,7 @@ func (c *DefaultDBMSCoreConfigurator) SegMgr() *logging.SegmentManager {
 	return c.segMgr
 }
 
-func (c *DefaultDBMSCoreConfigurator) LogMgr() *logging.LogManager {
+func (c *DefaultDBMSCoreFactory) LogMgr() *logging.LogManager {
 	// singleton
 	if c.logMgr == nil {
 		c.logMgr = logging.NewLogManager(c.SegMgr())
@@ -73,11 +73,11 @@ func (c *DefaultDBMSCoreConfigurator) LogMgr() *logging.LogManager {
 	return c.logMgr
 }
 
-func (c *DefaultDBMSCoreConfigurator) RecMgr() *recovery.RecoveryManager {
+func (c *DefaultDBMSCoreFactory) RecMgr() *recovery.RecoveryManager {
 	return recovery.NewRecoveryManager(c.LogMgr())
 }
 
-func (c *DefaultDBMSCoreConfigurator) BtstpMgr() *BootstrapManager {
+func (c *DefaultDBMSCoreFactory) BtstpMgr() *BootstrapManager {
 	// singleton
 	if c.btstpMgr == nil {
 		c.btstpMgr = NewBootstrapManager(c.cfg, c)

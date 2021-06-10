@@ -24,8 +24,8 @@ func Benchmark_CoreInsert(b *testing.B) {
 	// prepare
 	cfgLdr := new(config.DefaultConfigLoader)
 	cfgLdr.Load()
-	coreCfgr := NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg())
-	coreBtstp := coreCfgr.BtstpMgr()
+	coreFactory := NewDefaultDBMSCoreFactory(cfgLdr.CoreCfg())
+	coreBtstp := coreFactory.BtstpMgr()
 	coreBtstp.Init()
 	defer func() {
 		coreBtstp.Finalize()
@@ -44,7 +44,7 @@ func Benchmark_CoreInsert(b *testing.B) {
 		for i := 0; i < workers; i++ {
 			go func(key string){
 				txInsert(
-					coreCfgr.TxMgr().InitTx(concurrency.ExclusiveMode),
+					coreFactory.TxMgr().InitTx(concurrency.ExclusiveMode),
 					key,
 					int64(1),
 				)

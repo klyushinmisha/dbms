@@ -13,8 +13,8 @@ func Test_CoreInsert(t *testing.T) {
 	// prepare
 	cfgLdr := new(config.DefaultConfigLoader)
 	cfgLdr.Load()
-	coreCfgr := NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg())
-	coreBtstp := coreCfgr.BtstpMgr()
+	coreFactory := NewDefaultDBMSCoreFactory(cfgLdr.CoreCfg())
+	coreBtstp := coreFactory.BtstpMgr()
 	coreBtstp.Init()
 	defer func() {
 		coreBtstp.Finalize()
@@ -31,7 +31,7 @@ func Test_CoreInsert(t *testing.T) {
 	for i := 0; i < workers; i++ {
 		go func(key string){
 			txInsert(
-				coreCfgr.TxMgr().InitTx(concurrency.ExclusiveMode),
+				coreFactory.TxMgr().InitTx(concurrency.ExclusiveMode),
 				key,
 				int64(1),
 			)

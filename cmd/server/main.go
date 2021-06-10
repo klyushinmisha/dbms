@@ -9,11 +9,11 @@ import (
 func main() {
 	cfgLdr := new(config.DefaultConfigLoader)
 	cfgLdr.Load()
-	coreCfgr := core.NewDefaultDBMSCoreConfigurator(cfgLdr.CoreCfg())
-	coreBtstp := coreCfgr.BtstpMgr()
+	coreFactory := core.NewDefaultDBMSCoreFactory(cfgLdr.CoreCfg())
+	coreBtstp := coreFactory.BtstpMgr()
 	coreBtstp.Init()
 	defer coreBtstp.Finalize()
-	srvCfgr := server.NewDefaultDBMSServerConfigurator(cfgLdr.SrvCfg(), coreCfgr)
+	srvFactory := server.NewDefaultDBMSServerFactory(cfgLdr.SrvCfg(), coreFactory)
 	// accept incoming connections and process transactions
-	srvCfgr.ConnSrv().Run()
+	srvFactory.ConnSrv().Run()
 }

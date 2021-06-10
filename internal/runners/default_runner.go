@@ -18,22 +18,22 @@ type ScopedServerRunner interface {
 type DefaultScopedServerRunner struct {
 	cfgLdr config.ConfigLoader
 	coreBtstp *core.BootstrapManager
-	coreCfgr core.DBMSCoreConfigurator
-	srvCfgr server.DBMSServerConfigurator
+	coreFactory core.DBMSCoreFactory
+	srvFactory server.DBMSServerFactory
 }
 
 func (r *DefaultScopedServerRunner) Init() {
 	r.cfgLdr = new(config.DefaultConfigLoader)
 	r.cfgLdr.Load()
-	r.coreCfgr = core.NewDefaultDBMSCoreConfigurator(r.cfgLdr.CoreCfg())
-	r.coreBtstp = r.coreCfgr.BtstpMgr()
+	r.coreFactory = core.NewDefaultDBMSCoreFactory(r.cfgLdr.CoreCfg())
+	r.coreBtstp = r.coreFactory.BtstpMgr()
 	r.coreBtstp.Init()
-	r.srvCfgr = server.NewDefaultDBMSServerConfigurator(r.cfgLdr.SrvCfg(), r.coreCfgr)
+	r.srvFactory = server.NewDefaultDBMSServerFactory(r.cfgLdr.SrvCfg(), r.coreFactory)
 }
 
 func (r *DefaultScopedServerRunner) Run() {
 	// accept incoming connections and process transactions
-	r.srvCfgr.ConnSrv().Run()
+	r.srvFactory.ConnSrv().Run()
 }
 
 func (r *DefaultScopedServerRunner) Finalize() {
@@ -51,5 +51,5 @@ func (r *DefaultScopedServerRunner) BuildUrl() string {
 }
 
 func (r *DefaultScopedServerRunner) TxManager() *transaction.TxManager {
-	return r.coreCfgr.TxMgr()
+	return r.coreFactory.TxMgr()
 }

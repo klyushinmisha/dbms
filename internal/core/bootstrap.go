@@ -29,14 +29,14 @@ __/\\\\\\\\\\\\_____/\\\\\\\\\\\\\____/\\\\____________/\\\\_____/\\\\\\\\\\\___
 
 type BootstrapManager struct {
 	cfg      *config.CoreConfig
-	cfgr     DBMSCoreConfigurator
+	factory     DBMSCoreFactory
 	strgFile *os.File
 }
 
-func NewBootstrapManager(cfg *config.CoreConfig, cfgr DBMSCoreConfigurator) *BootstrapManager {
+func NewBootstrapManager(cfg *config.CoreConfig, factory DBMSCoreFactory) *BootstrapManager {
 	m := new(BootstrapManager)
 	m.cfg = cfg
-	m.cfgr = cfgr
+	m.factory = factory
 	return m
 }
 
@@ -47,16 +47,16 @@ func (m *BootstrapManager) StrgFile() *os.File {
 func (m *BootstrapManager) Init() {
 	log.Printf(serverSplash, pkg.Version)
 	// load log segments
-	m.cfgr.SegMgr().LoadSegments()
+	m.factory.SegMgr().LoadSegments()
 	// init storage before recovery attempt
 	m.initStorage()
 	// run recovery from journal
-	m.cfgr.RecMgr().RollForward(m.cfgr.TxMgr())
+	m.factory.RecMgr().RollForward(m.factory.TxMgr())
 }
 
 func (m *BootstrapManager) Finalize() {
 	m.closeStrg()
-	m.cfgr.SegMgr().CloseSegments()
+	m.factory.SegMgr().CloseSegments()
 }
 
 func (m *BootstrapManager) openStrg() {
@@ -76,7 +76,7 @@ func (m *BootstrapManager) closeStrg() {
 func (m *BootstrapManager) initStorage() {
 	m.openStrg()
 	// now TxMgr can access storage
-	tx := m.cfgr.TxMgr().InitTx(concurrency.ExclusiveMode)
+	tx := m.factory.TxMgr().InitTx(concurrency.ExclusiveMode)
 	bp_tree.NewDefaultBPTree(bpAdapter.NewBPTreeAdapter(tx)).Init()
 	tx.Commit()
 	log.Printf("Initialized storage %s", m.cfg.DataPath())
